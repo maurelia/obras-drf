@@ -4,6 +4,7 @@ import * as auth from './auth.js';
 import * as graph from './graph.js';
 import * as store from './store.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, TIPOS_PROTOCOLO, uid } from './schema.js';
+import { OBRAS_PROYECTO } from './catalogo.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -154,8 +155,24 @@ const OBRA_FIELDS = [
   { name: 'FechaTermino', label: 'Término', type: 'date' },
   { name: 'Lat', label: 'Latitud', type: 'number', ph: '-27.36' },
   { name: 'Lon', label: 'Longitud', type: 'number', ph: '-70.33' },
+  { name: 'Descripcion', label: 'Descripción', type: 'textarea' },
+  { name: 'Materialidad', label: 'Método constructivo (materialidad)', type: 'textarea' },
+  { name: 'Geometria', label: 'Geometría', type: 'textarea' },
   { name: 'Notas', label: 'Notas', type: 'textarea' },
 ];
+
+// Agrega las obras del catálogo del proyecto que falten (por código).
+// Con SharePoint, sincroniza antes para no duplicar lo que otro ya cargó.
+async function cargarCatalogo() {
+  if (!DEMO) {
+    try { await store.sync(); } catch { return toast('Sin conexión: conéctate para cargar las obras del proyecto.', true); }
+  }
+  const codigos = new Set((await store.all('obras')).map((o) => (o.Codigo || '').toUpperCase()));
+  const nuevas = OBRAS_PROYECTO.filter((o) => !codigos.has(o.Codigo));
+  for (const o of nuevas) await store.save('obras', o);
+  toast(nuevas.length ? `${nuevas.length} obras agregadas` : 'Las obras del proyecto ya estaban cargadas');
+  await updatePill(); trySync(); route();
+}
 
 const PARTIDA_FIELDS = [
   { name: 'Item', label: 'Ítem', ph: '3.1' },
@@ -211,9 +228,11 @@ async function viewObras(v) {
         ${estadoBadge(o.Estado)}<span class="chev">${ic('chev', 18)}</span></button>`;
     }).join('')}</div>` : `
       <div class="empty">${ic('obras', 48)}<b>Sin obras todavía</b>Crea la primera obra para registrar sus partidas, reportes de terreno y protocolos.<br><br>
-      <button class="btn" id="addObra2">${ic('plus', 20)} Nueva obra</button></div>`}`;
+      <button class="btn" id="cargar">Cargar obras del proyecto (${OBRAS_PROYECTO.length})</button><br><br>
+      <button class="btn sec" id="addObra2">${ic('plus', 20)} Nueva obra</button></div>`}`;
   $('#addObra').onclick = () => editObra();
   $('#addObra2') && ($('#addObra2').onclick = () => editObra());
+  $('#cargar') && ($('#cargar').onclick = cargarCatalogo);
 }
 
 // Avance ponderado simple: promedio de ejecutado/contrato por partida.
@@ -262,6 +281,9 @@ async function viewObra(v, obraUid) {
       <div class="row"><span class="k">Avance</span><span class="v">${av}%<div class="bar"><i style="width:${av}%"></i></div></span></div>
       ${mapa}
     </div>
+    ${o.Descripcion || o.Materialidad || o.Geometria ? `<h3>Ficha técnica</h3><div class="group kv">
+      ${[['Descripción', o.Descripcion], ['Materialidad', o.Materialidad], ['Geometría', o.Geometria]].filter(([, x]) => x)
+        .map(([k, x]) => `<div class="row"><span class="k">${k}</span><span class="v pre">${esc(x)}</span></div>`).join('')}</div>` : ''}
     ${o.Notas ? `<p class="foot">${esc(o.Notas)}</p>` : ''}
     <div style="margin-top:10px"><button class="btn sec" id="editObra">Editar obra</button></div>
     <div class="seg" role="tablist">${Object.entries(tabs).map(([k, l]) => `<button role="tab" aria-selected="${k === obraTab}" data-otab="${k}">${l}</button>`).join('')}</div>
@@ -317,8 +339,12 @@ async function viewAjustes(v) {
     </div>
     <p class="foot">Crear listas requiere ser propietario del sitio. Solo se hace una vez.</p>
     <div class="log" id="provLog" hidden></div>`}
+    <h3>Proyecto</h3>
+    <div><button class="btn sec" id="cargar">Cargar obras del proyecto (${OBRAS_PROYECTO.length})</button></div>
+    <p class="foot">Agrega solo las que falten, según su código (CR-1, CC-1, RD-1…).</p>
     <h3>Acerca de</h3>
     <div class="group kv"><div class="row"><span class="k">Versión</span><span class="v">${CONFIG.VERSION}</span></div></div>`;
+  $('#cargar').onclick = cargarCatalogo;
   if (DEMO) return;
   $('#logout').onclick = () => auth.logout();
   $('#syncNow').onclick = () => trySync(true);

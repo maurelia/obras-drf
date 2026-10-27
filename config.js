@@ -7,7 +7,7 @@ export const CONFIG = {
   SITE_HOST: '',            // p. ej. 'atacamakozan.sharepoint.com'
   SITE_PATH: '/sites/ObrasDRF', // sitio de SharePoint donde viven las listas
   LIST_PREFIX: 'DRF_',      // prefijo de las listas creadas por la app
-  VERSION: '0.1.0',
+  VERSION: '0.2.0',
 };
 
 export const DEMO = !CONFIG.CLIENT_ID;

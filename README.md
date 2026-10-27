@@ -19,10 +19,11 @@ vendor/       ← @azure/msal-browser 3.27.0 (licencia MIT)
 En el PC, los formatos de la empresa están fuera del repositorio
 (`apps\obras_drf\00_FORMATOS`).
 
-## Estado (v0.1.0)
+## Estado (v0.2.0)
 
 - Hecho: login M365, obras, partidas con avance, sincronización offline → SharePoint,
-  creación automática de listas, modo demo sin configuración.
+  creación automática de listas, modo demo sin configuración, catálogo de las 11 obras del proyecto
+  (`js/catalogo.js`, se carga desde Obras o Ajustes).
 - Pendiente: formularios de reporte de terreno y de protocolos (PEA, PCO, PIN, PTO, PEO, PRT),
   fotos con GPS, firma en pantalla, PDF y archivo en biblioteca de documentos.
 

@@ -31,6 +31,7 @@ export const LISTS = {
       text('Uid', { indexed: true }), text('Codigo'), text('Mandante'), text('Ubicacion'),
       choice('Estado', ESTADOS_OBRA), date('FechaInicio'), date('FechaTermino'),
       num('Lat'), num('Lon'), note('Notas'),
+      note('Descripcion'), note('Materialidad'), note('Geometria'),
     ],
   },
   partidas: {
