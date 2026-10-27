@@ -1,0 +1,12 @@
+{
+  "name": "Obras DRF – Atacama Kozan",
+  "short_name": "Obras DRF",
+  "description": "Reportes de terreno y protocolos de entrega de obras fluviales",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f4f7",
+  "theme_color": "#0b6aa2",
+  "lang": "es-CL",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
