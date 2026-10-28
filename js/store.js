@@ -1,6 +1,7 @@
 // Almacenamiento local (IndexedDB) + bandeja de salida para trabajar sin señal.
 // Todo cambio se guarda primero aquí; sync() lo sube a SharePoint cuando hay red.
-import { DEMO } from '../config.js';
+// Fotos, firmas y adjuntos viven en "files" hasta subirse a la biblioteca del sitio.
+import { CONFIG, DEMO } from '../config.js';
 import { LISTS, fieldNames } from './schema.js';
 import * as graph from './graph.js';
 
@@ -10,12 +11,15 @@ let db;
 function open() {
   if (db) return Promise.resolve(db);
   return new Promise((ok, fail) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => {
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = (ev) => {
       const d = req.result;
-      d.createObjectStore('items', { keyPath: 'key' });        // key = lista:Uid
-      d.createObjectStore('outbox', { keyPath: 'key' });       // un pendiente por registro
-      d.createObjectStore('meta', { keyPath: 'k' });
+      if (ev.oldVersion < 1) {
+        d.createObjectStore('items', { keyPath: 'key' });        // key = lista:Uid
+        d.createObjectStore('outbox', { keyPath: 'key' });       // un pendiente por registro
+        d.createObjectStore('meta', { keyPath: 'k' });
+      }
+      if (ev.oldVersion < 2) d.createObjectStore('files', { keyPath: 'id' }); // { id, blob, name, type, regUid, path, driveId }
     };
     req.onsuccess = () => ok((db = req.result));
     req.onerror = () => fail(req.error);
@@ -54,6 +58,15 @@ export async function save(list, data) {
   return merged;
 }
 
+// Borra un registro local; si ya estaba en SharePoint, queda en cola para borrarlo allá.
+export async function remove(list, Uid) {
+  const prev = await get(list, Uid);
+  await tx('items', 'readwrite', (s) => s.delete(`${list}:${Uid}`));
+  if (DEMO) return;
+  if (prev?._spId) await tx('outbox', 'readwrite', (s) => s.put({ key: `${list}:${Uid}`, list, Uid, del: prev._spId, at: Date.now() }));
+  else await tx('outbox', 'readwrite', (s) => s.delete(`${list}:${Uid}`));
+}
+
 export const pendingCount = () => tx('outbox', 'readonly', (s) => reqP(s.count()));
 
 export async function meta(k, v) {
@@ -61,23 +74,80 @@ export async function meta(k, v) {
   await tx('meta', 'readwrite', (s) => s.put({ k, v }));
 }
 
+// ---------- Archivos (fotos, firmas, adjuntos) ----------
+
+export async function putFile(f) {
+  await tx('files', 'readwrite', (s) => s.put(f));
+  return f;
+}
+export const getFile = (id) => tx('files', 'readonly', (s) => reqP(s.get(id)));
+
+// URL para mostrar un archivo: local si está en el equipo; si no, se baja de SharePoint.
+const urls = new Map();
+export async function fileUrl(ref) {
+  if (!ref) return '';
+  if (urls.has(ref.fid)) return urls.get(ref.fid);
+  let f = await getFile(ref.fid);
+  if (!f?.blob && ref.driveId && !DEMO) {
+    const blob = await graph.downloadFile(ref.driveId);
+    f = await putFile({ ...(f || {}), id: ref.fid, blob, name: ref.name, type: blob.type, driveId: ref.driveId });
+  }
+  if (!f?.blob) return '';
+  const u = URL.createObjectURL(f.blob);
+  urls.set(ref.fid, u);
+  return u;
+}
+
+// Recorre los Datos de un registro y reemplaza las referencias a archivos ya subidos.
+function patchRefs(v, done) {
+  if (Array.isArray(v)) return v.map((x) => patchRefs(x, done));
+  if (v && typeof v === 'object') {
+    if (v.fid && done[v.fid]) return { ...v, ...done[v.fid] };
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, patchRefs(x, done)]));
+  }
+  return v;
+}
+
+async function uploadFiles() {
+  const pend = (await tx('files', 'readonly', (s) => reqP(s.getAll()))).filter((f) => !f.driveId && f.blob && f.path);
+  const byReg = {};
+  for (const f of pend) {
+    const it = await graph.uploadFile(`${CONFIG.FILES_FOLDER}/${f.path}`, f.blob);
+    await putFile({ ...f, driveId: it.id, webUrl: it.webUrl });
+    (byReg[f.regUid] ||= {})[f.id] = { driveId: it.id, webUrl: it.webUrl };
+  }
+  for (const [regUid, done] of Object.entries(byReg)) {
+    const r = await get('registros', regUid);
+    if (r) await save('registros', { Uid: regUid, Datos: patchRefs(r.Datos, done) });
+  }
+}
+
+// ---------- Sincronización ----------
+
 const pick = (list, data) => Object.fromEntries(
-  fieldNames(list).filter((f) => data[f] !== undefined && data[f] !== null && data[f] !== '').map((f) => [f, data[f]])
+  fieldNames(list).filter((f) => data[f] !== undefined && data[f] !== null && data[f] !== '')
+    .map((f) => [f, typeof data[f] === 'object' ? JSON.stringify(data[f]) : data[f]])
 );
+const parse = (r) => {
+  if (typeof r.Datos === 'string') { try { r.Datos = JSON.parse(r.Datos); } catch { /* texto libre */ } }
+  return r;
+};
 
 let syncing = null;
 
-// Sube la bandeja de salida y luego baja todo desde SharePoint.
+// Sube archivos y bandeja de salida, y luego baja todo desde SharePoint.
 export function sync() {
   if (DEMO) return Promise.resolve({ subidos: 0, demo: true });
   return (syncing ||= (async () => {
     try {
+      await uploadFiles();
       const pend = await tx('outbox', 'readonly', (s) => reqP(s.getAll()));
       pend.sort((a, b) => order(a.list) - order(b.list) || a.at - b.at);
       let subidos = 0;
       for (const p of pend) {
-        const data = await get(p.list, p.Uid);
-        if (data) {
+        const data = p.del ? null : await get(p.list, p.Uid);
+        if (p.del) await graph.deleteItem(p.list, p.del);
+        else if (data) {
           const fields = pick(p.list, data);
           if (data._spId) await graph.updateItem(p.list, data._spId, fields);
           else data._spId = await graph.createItem(p.list, fields);
@@ -93,7 +163,7 @@ export function sync() {
           for (const r of remote) {
             if (!r.Uid) continue;
             const key = `${list}:${r.Uid}`;
-            if (!stillPending.has(key)) s.put({ key, list, data: r });
+            if (!stillPending.has(key)) s.put({ key, list, data: parse(r) });
           }
         });
       }

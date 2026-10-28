@@ -1,9 +1,10 @@
 // Service worker: deja la app disponible sin señal. Los datos viajan por
 // Graph (nunca se cachean aquí); los cambios offline viven en IndexedDB.
-const CACHE = 'obrasdrf-v2';
+const CACHE = 'obrasdrf-v3';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.json', 'icon.svg', 'vendor/msal-browser.min.js',
   'js/app.js', 'js/auth.js', 'js/graph.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
+  'js/forms.js', 'js/engine.js', 'js/avance.js',
 ];
 
 self.addEventListener('install', (e) => {

@@ -7,7 +7,15 @@ export const CONFIG = {
   SITE_HOST: '',            // p. ej. 'atacamakozan.sharepoint.com'
   SITE_PATH: '/sites/ObrasDRF', // sitio de SharePoint donde viven las listas
   LIST_PREFIX: 'DRF_',      // prefijo de las listas creadas por la app
-  VERSION: '0.2.0',
+  FILES_FOLDER: 'ObrasDRF', // carpeta de fotos, firmas y adjuntos en Documentos del sitio
+  VERSION: '0.3.0',
+};
+
+export const PROYECTO = {
+  nombre: 'Obras Fluviales DRF',
+  codigo: 'DRF-OF-2509-06',
+  sigla: 'OF',              // va en los códigos de registro: PDA-OF-001
+  empresa: 'S.C.M. Atacama Kozan',
 };
 
 export const DEMO = !CONFIG.CLIENT_ID;

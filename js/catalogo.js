@@ -46,4 +46,33 @@ export const OBRAS_PROYECTO = [
     Geometria: 'Cuenco rectangular\nLi: 8 m · Ai: 6 m\nLe: 24 m · Ae: 18 m\nh: 2 m\nH/V: 3/1' },
   // Sin descripción en la planilla de origen.
   { Codigo: 'CE', Title: 'Canal de encauzamiento' },
-].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada' }));
+].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada', Peso: 0 }));
+
+// Pesos y etapas de 07.SEGUIMIENTO\Control_Avance_Diario_Protocolos_LJ_Obras_Fluviales_RevB.xlsx
+// (hojas Configuracion y Registro_Diario). Pesos en %; AvanceBase = avance acumulado
+// al último registro de esa planilla (FECHA_BASE); desde ahí suman los protocolos diarios. "Canales Secundarios" (10 %) se reparte entre CS-1 y CS-2.
+export const FECHA_BASE = '2026-09-09';
+
+const SECUNDARIOS = [['Excavación', 20], ['Perfilado y compactación', 15], ['Revestimiento HDPE', 25],
+  ['Enrocado con mortero', 30], ['Terminaciones / control', 10]];
+const PLAN = {
+  CE: { Peso: 55, Estado: 'Terminada', etapas: [['Corte y relleno', 40, 100], ['Perfilado y compactación superior', 10, 100],
+    ['Excavación canal', 25, 100], ['Perfilado final', 15, 100], ['Compactación final', 10, 100]] },
+  'RD-1': { Peso: 15, Estado: 'En ejecución', etapas: [['Excavación', 35, 90], ['Compactación de fondo', 15], ['Hormigonado', 40], ['Curado', 10]] },
+  DE: { Peso: 20, Estado: 'En ejecución', etapas: [['Excavación de fondo', 20, 35], ['Excavación de cuenco', 20], ['Enrocado', 25],
+    ['Hormigonado', 25], ['Curado', 10]] },
+  'CS-1': { Peso: 5, etapas: SECUNDARIOS },
+  'CS-2': { Peso: 5, etapas: SECUNDARIOS },
+};
+
+export const ETAPAS_PROYECTO = [];
+for (const o of OBRAS_PROYECTO) {
+  const plan = PLAN[o.Codigo];
+  if (!plan) continue;
+  o.Peso = plan.Peso;
+  if (plan.Estado) o.Estado = plan.Estado;
+  plan.etapas.forEach(([Title, Peso, AvanceBase = 0], i) => ETAPAS_PROYECTO.push({
+    Uid: `${o.Uid}-e${i + 1}`, ObraUid: o.Uid, Item: String(i + 1), Title, Peso, AvanceBase,
+    Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
+  }));
+}

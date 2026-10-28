@@ -93,3 +93,40 @@ export async function updateItem(key, spId, fields) {
   await ensureLists();
   await call(`/sites/${siteId}/lists/${listIds[key]}/items/${spId}/fields`, { method: 'PATCH', body: fields });
 }
+
+// ---------- Archivos en la biblioteca Documentos del sitio ----------
+
+const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+// Sube un archivo; sobre 4 MB usa sesión de carga por partes (adjuntos grandes).
+export async function uploadFile(path, blob) {
+  const sid = await site();
+  const base = `/sites/${sid}/drive/root:/${encPath(path)}:`;
+  if (blob.size <= 4 * 1024 * 1024) {
+    const res = await fetch(G + base + '/content?@microsoft.graph.conflictBehavior=rename', {
+      method: 'PUT', headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
+    });
+    if (!res.ok) throw new Error(`Subida ${path}: ${res.status}`);
+    return res.json();
+  }
+  const { uploadUrl } = await call(base + '/createUploadSession', { method: 'POST', body: { item: { '@microsoft.graph.conflictBehavior': 'rename' } } });
+  const CH = 5 * 320 * 1024; // múltiplo de 320 KiB, como exige Graph
+  for (let i = 0; i < blob.size; i += CH) {
+    const end = Math.min(i + CH, blob.size);
+    const res = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Range': `bytes ${i}-${end - 1}/${blob.size}` }, body: blob.slice(i, end) });
+    if (!res.ok) throw new Error(`Subida ${path}: ${res.status}`);
+    if (end === blob.size) return res.json();
+  }
+}
+
+export async function downloadFile(itemId) {
+  const sid = await site();
+  const res = await fetch(`${G}/sites/${sid}/drive/items/${itemId}/content`, { headers: { Authorization: `Bearer ${await token()}` } });
+  if (!res.ok) throw new Error(`Descarga: ${res.status}`);
+  return res.blob();
+}
+
+export async function deleteItem(key, spId) {
+  await ensureLists();
+  await call(`/sites/${siteId}/lists/${listIds[key]}/items/${spId}`, { method: 'DELETE' });
+}
