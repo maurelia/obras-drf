@@ -8,7 +8,7 @@ export const CONFIG = {
   SITE_PATH: '/sites/ObrasDRF', // sitio de SharePoint donde viven las listas
   LIST_PREFIX: 'DRF_',      // prefijo de las listas creadas por la app
   FILES_FOLDER: 'ObrasDRF', // carpeta de fotos, firmas y adjuntos en Documentos del sitio
-  VERSION: '0.3.1',
+  VERSION: '0.3.2',
 };
 
 export const PROYECTO = {

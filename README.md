@@ -25,7 +25,7 @@ En el PC, los formatos de la empresa están fuera del repositorio
 
 ## Estado (v0.3.0)
 
-- Perfiles: **Administrador** (ingenieros de proyectos y TI), **Supervisor de terraza**, **Supervisor empresa colaboradora**, **Topógrafo** y **Operador**, en la lista DRF_Usuarios.
+- Perfiles: **Administrador** (ingenieros de proyectos y TI), **Supervisor de terraza**, **Supervisor empresa colaboradora** (externo, invitado B2B; solo consulta registros aprobados), **Topógrafo** y **Operador**, en la lista DRF_Usuarios.
   Sin usuarios cargados, todos entran como administrador (configuración inicial).
 - 8 formatos digitales transcritos de `03.PROYECTO\08.PROTOCOLOS-PROCEDIMIENTOS`, con fotos con GPS, firma en pantalla,
   adjuntos (subida por partes sobre 4 MB) y documento imprimible / PDF.

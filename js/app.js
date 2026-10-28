@@ -60,6 +60,9 @@ let SES = null; // { nombre, correo, rol }
 const esAdmin = () => SES?.rol === 'Administrador';
 // El supervisor de terraza ve lo enviado por todos (sin aprobar ni administrar).
 const veTodo = () => esAdmin() || SES?.rol === 'Supervisor de terraza';
+// Supervisor de empresa colaboradora: externo (invitado con correo de su empresa o personal),
+// solo consulta los registros aprobados por el administrador; no llena formatos.
+const esExterno = () => SES?.rol === 'Supervisor empresa colaboradora';
 
 async function cargarSesion() {
   const acc = auth.account();
@@ -195,7 +198,8 @@ async function datos() {
 }
 
 // Lo que ve cada uno: administrador y supervisor de terraza ven todo lo enviado; los demás, lo suyo.
-const visibles = (regs) => regs.filter((r) => r.AutorCorreo === SES.correo || (veTodo() && r.Estado !== 'Borrador'));
+const visibles = (regs) => regs.filter((r) => esExterno() ? r.Estado === 'Aprobado'
+  : r.AutorCorreo === SES.correo || (veTodo() && r.Estado !== 'Borrador'));
 const regRow = (r, obras) => `<button class="row" data-go="#/reg/${esc(r.Uid)}">
   <span class="ricon">${ic(FORMS[r.Tipo]?.icon, 20)}</span>
   <div class="main"><div class="t">${esc(r.Codigo || 'Borrador')} · ${esc(FORMS[r.Tipo]?.corto || r.Tipo)}${pendIcon(r)}</div>
@@ -327,7 +331,7 @@ async function viewInicio(v) {
       ${tile('Protocolos diarios', deSemana.filter((r) => r.Tipo === 'PDA').length, 'esta semana')}
       ${tile('Horas máquina', horas.toLocaleString('es-CL', { maximumFractionDigits: 1 }), 'esta semana (horómetro)')}
       ${tile('Control topográfico', conf ? fmtPct(conf.pct, 0) : '—', conf ? `conforme · ${ultPCT.Codigo}` : 'sin controles')}
-      ${porRevisar != null ? tile('Por revisar', porRevisar, 'registros enviados', '#/registros?f=revisar') : tile('Mis registros', visibles(registros).length, 'en total', '#/registros')}
+      ${porRevisar != null ? tile('Por revisar', porRevisar, 'registros enviados', '#/registros?f=revisar') : esExterno() ? tile('Registros aprobados', visibles(registros).length, 'disponibles para consulta', '#/registros') : tile('Mis registros', visibles(registros).length, 'en total', '#/registros')}
     </div>
 
     <h3>Avance acumulado</h3>
@@ -477,7 +481,7 @@ async function viewRegistros(v, filtro) {
   const { obras, registros } = await datos();
   const obrasMap = Object.fromEntries(obras.map((o) => [o.Uid, o]));
   const mios = registros.filter((r) => r.AutorCorreo === SES.correo);
-  const segs = esAdmin()
+  const segs = esExterno() ? { todos: 'Aprobados' } : esAdmin()
     ? { revisar: `Por revisar (${registros.filter((r) => r.Estado === 'Enviado').length})`, todos: 'Todos', mios: 'Míos' }
     : { mios: 'Míos', pendientes: `Por corregir (${mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador').length})`, ...(veTodo() ? { todos: 'Todos' } : {}) };
   const f = segs[filtro] ? filtro : Object.keys(segs)[0];
@@ -486,11 +490,11 @@ async function viewRegistros(v, filtro) {
       : f === 'pendientes' ? mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador') : mios)
     .sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || '') || (b.Correlativo || 0) - (a.Correlativo || 0));
   const tipos = Object.keys(FORMS).filter((t) => puede(SES.rol, t));
-  v.innerHTML = `<div class="head"><h1>Registros</h1><button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button></div>
+  v.innerHTML = `<div class="head"><h1>Registros</h1>${tipos.length ? `<button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button>` : ''}</div>
     <div class="seg" role="tablist">${Object.entries(segs).map(([k, l]) => `<button role="tab" aria-selected="${k === f}" data-go="#/registros?f=${k}">${l}</button>`).join('')}</div>
     ${rows.length ? `<div class="group">${rows.map((r) => regRow(r, obrasMap)).join('')}</div>`
-      : `<div class="empty">${ic('prot', 48)}<b>${f === 'revisar' ? 'Nada por revisar' : 'Sin registros'}</b>${f === 'revisar' ? '' : 'Usa el botón + para llenar un protocolo o registro.'}</div>`}`;
-  $('#nuevo').onclick = () => elegirTipo(tipos);
+      : `<div class="empty">${ic('prot', 48)}<b>${f === 'revisar' ? 'Nada por revisar' : 'Sin registros'}</b>${f === 'revisar' ? '' : tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : 'Aquí aparecerán los registros aprobados por el administrador.'}</div>`}`;
+  $('#nuevo') && ($('#nuevo').onclick = () => elegirTipo(tipos));
 }
 
 function elegirTipo(tipos) {
@@ -513,7 +517,7 @@ async function viewRegistro(v, regUid, tipoNuevo) {
   if (regUid && !reg) { setNav('', '#/registros'); v.innerHTML = '<div class="empty"><b>Registro no encontrado</b></div>'; return; }
   const tipo = reg?.Tipo || tipoNuevo;
   const spec = FORMS[tipo];
-  if (!spec) { location.hash = '#/registros'; return; }
+  if (!spec || (!reg && !puede(SES.rol, tipo))) { location.hash = '#/registros'; return; }
   const ctx = { obras, partidas, registros, usuario: SES.nombre, regUid: reg?.Uid || uid() };
   const propio = !reg || reg.AutorCorreo === SES.correo;
   const editable = (!reg && puede(SES.rol, tipo)) || (reg && ['Borrador', 'Observado'].includes(reg.Estado) && (propio || esAdmin()));
@@ -655,7 +659,7 @@ async function viewAjustes(v) {
       <div class="s">${esc(u.Correo)}</div></div><span class="badge ${u.Activo === false ? 'bad' : ''}">${u.Activo === false ? 'Inactivo' : esc(u.Rol)}</span></button>`).join('')}</div>`
       : '<p class="foot">Sin usuarios. Mientras la lista esté vacía, todos entran como administrador: agrega al menos a los administradores.</p>'}
     <div style="margin-top:10px"><button class="btn sec" id="addUser">${ic('plus', 20)} Agregar usuario</button></div>
-    <p class="foot">Administrador: ingenieros de proyectos y TI (obras, etapas, usuarios y aprobación). Supervisor de terraza: protocolo diario, maquinarias y humectación; ve los registros de todos. Supervisor empresa colaboradora: los mismos formatos, solo sus registros. Topógrafo: protocolos topográficos, transmittal y PANDA. Operador: maquinarias, humectación y protocolo diario.</p>
+    <p class="foot">Administrador: ingenieros de proyectos y TI (obras, etapas, usuarios y aprobación). Supervisor de terraza: protocolo diario, maquinarias y humectación; ve los registros de todos. Supervisor empresa colaboradora: externo, ingresa con el correo de su empresa (o personal) y solo consulta los registros aprobados. Topógrafo: protocolos topográficos, transmittal y PANDA. Operador: maquinarias, humectación y protocolo diario.</p>
     <h3>Proyecto</h3>
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}

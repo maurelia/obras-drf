@@ -7,7 +7,7 @@
 // table (filas; cols con los mismos tipos; rows = filas fijas), points (control de cotas),
 // checklist, photos, files, signature, firmas (varias firmas por etapa).
 
-const A = 'Administrador', S = 'Supervisor de terraza', C = 'Supervisor empresa colaboradora', T = 'Topógrafo', O = 'Operador';
+const A = 'Administrador', S = 'Supervisor de terraza', T = 'Topógrafo', O = 'Operador';
 const SI_NO = ['Sí', 'No'];
 
 // Tolerancias de 07.SEGUIMIENTO\03.CONTROLES\CONTROL_AVANCE_OBRAS_FLUVIALES_AK.xlsx (1_CONFIG).
@@ -52,7 +52,7 @@ const EQUIPOS_TOPO = ['GNSS RTK', 'Estación Total', 'Nivel', 'Otro'];
 export const FORMS = {
   PDA: {
     titulo: 'Protocolo diario de avance de obras', corto: 'Protocolo diario de avance', rev: 'Rev. C',
-    roles: [A, S, C, T, O], icon: 'rep',
+    roles: [A, S, T, O], icon: 'rep',
     secciones: [
       { t: 'A. Información general', campos: [
         { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
@@ -109,7 +109,7 @@ export const FORMS = {
   },
 
   RCM: {
-    titulo: 'Registro control de maquinarias', corto: 'Registro de maquinarias', rev: '', roles: [A, S, C, O], icon: 'truck',
+    titulo: 'Registro control de maquinarias', corto: 'Registro de maquinarias', rev: '', roles: [A, S, O], icon: 'truck',
     secciones: [
       { t: 'Datos del turno', campos: [
         { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
@@ -288,7 +288,7 @@ export const FORMS = {
   },
 
   PHU: {
-    titulo: 'Protocolo de humectación – Planilla de chequeo', corto: 'Humectación planta', rev: '', roles: [A, S, C, O], icon: 'drop',
+    titulo: 'Protocolo de humectación – Planilla de chequeo', corto: 'Humectación planta', rev: '', roles: [A, S, O], icon: 'drop',
     secciones: [
       { t: 'Datos generales', campos: [
         { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
