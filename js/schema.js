@@ -11,7 +11,7 @@ const date = (name) => ({ name, dateTime: { format: 'dateOnly' } });
 const bool = (name) => ({ name, boolean: {} });
 const choice = (name, choices) => ({ name, choice: { choices, displayAs: 'dropDownMenu' } });
 
-export const ROLES = ['Administrador', 'Supervisor de terraza', 'Topógrafo', 'Operador'];
+export const ROLES = ['Administrador', 'Supervisor de terraza', 'Supervisor empresa colaboradora', 'Topógrafo', 'Operador'];
 export const ESTADOS_OBRA = ['Planificada', 'En ejecución', 'Paralizada', 'Terminada'];
 export const ESTADOS_PARTIDA = ['Pendiente', 'En ejecución', 'Terminada'];
 // Borrador: solo lo ve su autor. Enviado: firmado, espera revisión. Observado: vuelve al autor.

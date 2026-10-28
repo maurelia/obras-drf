@@ -655,7 +655,7 @@ async function viewAjustes(v) {
       <div class="s">${esc(u.Correo)}</div></div><span class="badge ${u.Activo === false ? 'bad' : ''}">${u.Activo === false ? 'Inactivo' : esc(u.Rol)}</span></button>`).join('')}</div>`
       : '<p class="foot">Sin usuarios. Mientras la lista esté vacía, todos entran como administrador: agrega al menos a los administradores.</p>'}
     <div style="margin-top:10px"><button class="btn sec" id="addUser">${ic('plus', 20)} Agregar usuario</button></div>
-    <p class="foot">Administrador: ingenieros de proyectos y TI (obras, etapas, usuarios y aprobación). Supervisor de terraza: protocolo diario, maquinarias y humectación; ve los registros de todos. Topógrafo: protocolos topográficos, transmittal y PANDA. Operador: maquinarias, humectación y protocolo diario.</p>
+    <p class="foot">Administrador: ingenieros de proyectos y TI (obras, etapas, usuarios y aprobación). Supervisor de terraza: protocolo diario, maquinarias y humectación; ve los registros de todos. Supervisor empresa colaboradora: los mismos formatos, solo sus registros. Topógrafo: protocolos topográficos, transmittal y PANDA. Operador: maquinarias, humectación y protocolo diario.</p>
     <h3>Proyecto</h3>
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
