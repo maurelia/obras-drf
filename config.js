@@ -13,7 +13,7 @@ export const CONFIG = {
   FILES_FOLDER: 'ObrasDRF', // carpeta de fotos, firmas y adjuntos en Documentos del sitio
   GOOGLE_CLIENT_ID: '',     // Id. de cliente OAuth (aplicación web) del proyecto en Google Cloud
   BUZON_CORREO: '',         // cuenta Google del proyecto que recibe los envíos de terreno
-  VERSION: '0.4.0',
+  VERSION: '0.4.1',
 };
 
 export const PROYECTO = {

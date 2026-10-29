@@ -66,9 +66,9 @@ const ls = {
 };
 // Dos formas de entrar: 'terreno' (cuenta Google; llena protocolos y los envía al
 // buzón de Drive) y 'kozan' (cuenta Microsoft; administra o consulta SharePoint).
-// En modo demo la forma la decide el perfil de prueba.
+// En modo demo se elige en la misma pantalla de inicio de sesión, sin contraseña.
 const ROLES_TERRENO = ['Supervisor de terraza', 'Topógrafo', 'Operador'];
-const modo = () => (DEMO ? (ROLES_TERRENO.includes(SES?.rol) ? 'terreno' : 'kozan') : ls.get('modo'));
+const modo = () => ls.get(DEMO ? 'demoSesion' : 'modo');
 const esTerreno = () => modo() === 'terreno';
 const esAdmin = () => modo() === 'kozan' && SES?.rol === 'Administrador';
 // Con cuenta Kozan, todo perfil que no sea administrador solo consulta lo aprobado
@@ -79,9 +79,10 @@ const puedeLlenar = (tipo) => !soloConsulta() && puede(SES?.rol, tipo);
 async function cargarSesion() {
   store.setRemoto(ls.get('modo') === 'kozan');
   if (DEMO) {
+    if (!modo()) return (SES = null);
     let rol = null;
     try { rol = localStorage.getItem('demoRol'); } catch {}
-    if (!ROLES.includes(rol)) rol = 'Administrador';
+    if (!ROLES.includes(rol) || (esTerreno() && !ROLES_TERRENO.includes(rol))) rol = esTerreno() ? null : 'Administrador';
     return (SES = { nombre: 'Usuario demo', correo: 'demo@local', rol });
   }
   if (modo() === 'terreno') {
@@ -458,7 +459,7 @@ function wireChart(v, serie) {
   svg.addEventListener('pointermove', show); svg.addEventListener('pointerdown', show); svg.addEventListener('pointerleave', hide);
 }
 
-const demoNotice = () => (DEMO ? `<div class="notice">${ic('info', 20)}<div><b>Modo demo.</b> Los datos quedan solo en este equipo. Perfil de prueba: ${esc(SES?.rol)} (cámbialo en Ajustes).</div></div>` : '');
+const demoNotice = () => (DEMO ? `<div class="notice">${ic('info', 20)}<div><b>Modo demo.</b> Los datos quedan solo en este equipo. Perfil de prueba: ${esc(SES?.rol)} (cámbialo en Ajustes o cierra sesión).</div></div>` : '');
 
 async function viewObras(v) {
   setNav('Obras');
@@ -787,6 +788,7 @@ function editUsuario(u = {}) {
 }
 
 function cerrarSesion() {
+  if (DEMO) { ls.del('demoSesion'); SES = null; location.hash = ''; return route(); }
   ls.del('modo');
   if (esTerreno()) { gdrive.olvidar(); ls.del('perfilTerreno'); SES = null; store.setRemoto(false); return route(); }
   auth.logout();
@@ -833,7 +835,8 @@ async function viewAjustes(v) {
     </div>
     ${DEMO ? `<div class="group" style="margin-top:10px"><div class="field"><label for="demoRol">Perfil de prueba</label><select id="demoRol">${ROLES.map((r) => `<option${r === SES.rol ? ' selected' : ''}>${r}</option>`).join('')}</select></div></div>
       <p class="foot">Solo en modo demo: cambia el perfil para ver la app como topógrafo u operador. Los perfiles de terreno ven la app como si entraran con su cuenta Google.</p>`
-      : `<div style="margin-top:10px"><button class="btn danger" id="logout">Cerrar sesión</button></div>`}
+      : ''}
+    <div style="margin-top:10px"><button class="btn danger" id="logout">Cerrar sesión</button></div>
     <h3>SharePoint</h3>
     <div class="group kv">
       <div class="row"><span class="k">Sitio</span><span class="v">${DEMO ? 'No configurado (modo demo)' : esc(CONFIG.SITE_HOST + CONFIG.SITE_PATH)}</span></div>
@@ -863,13 +866,17 @@ async function viewAjustes(v) {
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
     <h3>Acerca de</h3>
     <div class="group kv"><div class="row"><span class="k">Versión</span><span class="v">${CONFIG.VERSION}</span></div></div>`;
-  $('#demoRol') && ($('#demoRol').onchange = async (e) => { try { localStorage.setItem('demoRol', e.target.value); } catch {} await cargarSesion(); route(); });
+  $('#demoRol') && ($('#demoRol').onchange = async (e) => {
+    try { localStorage.setItem('demoRol', e.target.value); } catch {}
+    ls.set('demoSesion', ROLES_TERRENO.includes(e.target.value) ? 'terreno' : 'kozan');
+    await cargarSesion(); route();
+  });
   $('#cargar') && ($('#cargar').onclick = cargarCatalogo);
   $('#traer') && ($('#traer').onclick = importarEnvios);
   $('#addUser') && ($('#addUser').onclick = () => editUsuario());
   v.querySelectorAll('[data-user]').forEach((b) => (b.onclick = () => editUsuario(usuarios.find((u) => u.Uid === b.dataset.user))));
-  if (DEMO) return;
   $('#logout').onclick = cerrarSesion;
+  if (DEMO) return;
   $('#syncNow').onclick = () => trySync(true);
   $('#prov') && ($('#prov').onclick = async () => {
     const log = $('#provLog'); log.hidden = false; log.textContent = '';
@@ -893,10 +900,17 @@ function viewLogin(v) {
   v.innerHTML = `<div class="empty" style="padding-top:14vh">
     <img src="icon.svg" width="84" height="84" alt="" style="border-radius:20px"><br><br>
     <b style="font-size:1.75rem">Obras DRF</b>Protocolos, reportes de operación y avance de obras.<br><br>
-    ${HAY_GOOGLE ? `<button class="btn" id="loginG">Llenar protocolos · Entrar con Google</button>
+    ${HAY_GOOGLE || DEMO ? `<button class="btn" id="loginG">Llenar protocolos · Entrar con Google</button>
       <p class="foot">Operadores, topógrafos y supervisores de terraza, con su correo personal o de empresa.</p>` : ''}
-    ${HAY_KOZAN ? `<button class="btn${HAY_GOOGLE ? ' sec' : ''}" id="loginM">Administrar o consultar · Entrar con Microsoft</button>
-      <p class="foot">Ingenieros de proyectos, TI y usuarios invitados al sitio de SharePoint.</p>` : ''}</div>`;
+    ${HAY_KOZAN || DEMO ? `<button class="btn sec" id="loginM">Administrar o consultar · Entrar con Microsoft</button>
+      <p class="foot">Ingenieros de proyectos, TI y usuarios invitados al sitio de SharePoint.</p>` : ''}
+    ${DEMO ? `<div class="notice" style="text-align:left">${ic('info', 20)}<div><b>Modo demo.</b> La app aún no está conectada a Google ni a Microsoft: estos botones entran sin contraseña y los datos quedan solo en este equipo.</div></div>` : ''}</div>`;
+  if (DEMO) {
+    const entrar = (m, rol) => { ls.set('demoSesion', m); try { localStorage.setItem('demoRol', rol); } catch {} SES = null; route(); };
+    $('#loginG').onclick = () => entrar('terreno', '');
+    $('#loginM').onclick = () => entrar('kozan', 'Administrador');
+    return;
+  }
   $('#loginM') && ($('#loginM').onclick = () => { ls.set('modo', 'kozan'); auth.login(); });
   $('#loginG') && ($('#loginG').onclick = async () => {
     try {
@@ -914,13 +928,14 @@ function viewPerfil(v) {
   setNav('');
   $('#tabs').innerHTML = '';
   v.innerHTML = `<div class="head"><h1>Tu perfil</h1></div>
-    <p class="foot">Entraste como ${esc(SES.correo)}. Indica tu nombre y perfil para ver tus formatos.</p>
+    <p class="foot">${DEMO ? 'Modo demo: elige el perfil con que quieres probar la app.' : `Entraste como ${esc(SES.correo)}. Indica tu nombre y perfil para ver tus formatos.`}</p>
     <div class="group">
       <div class="field"><label for="pn">Nombre</label><input id="pn" value="${esc(SES.nombre)}"></div>
       <div class="field"><label for="pr">Perfil</label><select id="pr">${ROLES_TERRENO.map((r) => `<option>${r}</option>`).join('')}</select></div>
     </div>
     <div style="margin-top:12px"><button class="btn" id="ok">Continuar</button><button class="btn danger" id="salir">Usar otra cuenta</button></div>`;
   $('#ok').onclick = () => {
+    if (DEMO) { try { localStorage.setItem('demoRol', $('#pr').value); } catch {} SES = null; location.hash = '#/registros'; return route(); }
     ls.set('perfilTerreno', { ...ls.get('perfilTerreno'), nombre: $('#pn').value.trim() || SES.nombre, rol: $('#pr').value });
     SES = null; location.hash = '#/registros'; route();
   };
