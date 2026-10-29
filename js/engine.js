@@ -349,7 +349,7 @@ export function renderDoc(reg, ctx) {
   }).join('');
   return `<article class="doc">
     <header class="dochead"><div><b>${esc(PROYECTO.empresa)}</b><br>${esc(PROYECTO.nombre)} · ${esc(PROYECTO.codigo)}</div>
-      <div class="dc"><b>${esc(reg.Codigo || 'Borrador')}</b><br>${esc(spec.rev || '')}</div></header>
+      <div class="dc"><b>${esc(reg.Codigo || (reg.Estado === 'Borrador' ? 'Borrador' : 'Sin código'))}</b><br>${esc(spec.rev || '')}</div></header>
     <h2 class="doctitle">${esc(spec.titulo)}</h2>
     <table class="kvt meta">${kvRow('Fecha', fmtDate(reg.Fecha))}${kvRow('Registrado por', esc(reg.Autor))}${kvRow('Estado', esc(reg.Estado))}
       ${reg.Revisor ? kvRow('Revisado por', esc(reg.Revisor)) : ''}${reg.Comentario ? kvRow('Comentario de revisión', esc(reg.Comentario)) : ''}</table>

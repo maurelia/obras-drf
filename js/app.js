@@ -1,7 +1,8 @@
 // Interfaz: navegación por hash (#/inicio, #/obras, #/obra/<uid>, #/registros,
 // #/nuevo/<tipo>, #/reg/<uid>, #/ajustes).
-import { CONFIG, DEMO } from '../config.js';
+import { CONFIG, DEMO, HAY_KOZAN, HAY_GOOGLE } from '../config.js';
 import * as auth from './auth.js';
+import * as gdrive from './gdrive.js';
 import * as graph from './graph.js';
 import * as store from './store.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, ROLES, uid, nextCode } from './schema.js';
@@ -33,6 +34,7 @@ const P = {
   drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
   gauge: '<path d="M4 16a8 8 0 1 1 16 0M12 16l4-5"/>',
   print: '<path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/>',
+  down: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
 };
 const ic = (n, s = 22) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || P.rep}</svg>`;
 
@@ -57,22 +59,40 @@ const addDays = (f, n) => { const d = new Date(f + 'T12:00'); d.setDate(d.getDat
 // ---------- Sesión y perfil ----------
 
 let SES = null; // { nombre, correo, rol }
-const esAdmin = () => SES?.rol === 'Administrador';
-// El supervisor de terraza ve lo enviado por todos (sin aprobar ni administrar).
-const veTodo = () => esAdmin() || SES?.rol === 'Supervisor de terraza';
-// Supervisor de empresa colaboradora: externo (invitado con correo de su empresa o personal),
-// solo consulta los registros aprobados por el administrador; no llena formatos.
-const esExterno = () => SES?.rol === 'Supervisor empresa colaboradora';
+const ls = {
+  get: (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del: (k) => { try { localStorage.removeItem(k); } catch {} },
+};
+// Dos formas de entrar: 'terreno' (cuenta Google; llena protocolos y los envía al
+// buzón de Drive) y 'kozan' (cuenta Microsoft; administra o consulta SharePoint).
+// En modo demo la forma la decide el perfil de prueba.
+const ROLES_TERRENO = ['Supervisor de terraza', 'Topógrafo', 'Operador'];
+const modo = () => (DEMO ? (ROLES_TERRENO.includes(SES?.rol) ? 'terreno' : 'kozan') : ls.get('modo'));
+const esTerreno = () => modo() === 'terreno';
+const esAdmin = () => modo() === 'kozan' && SES?.rol === 'Administrador';
+// Con cuenta Kozan, todo perfil que no sea administrador solo consulta lo aprobado
+// (entre ellos el supervisor de empresa colaboradora, invitado con su correo).
+const soloConsulta = () => modo() === 'kozan' && !esAdmin();
+const puedeLlenar = (tipo) => !soloConsulta() && puede(SES?.rol, tipo);
 
 async function cargarSesion() {
-  const acc = auth.account();
-  if (!acc) return (SES = null);
-  const correo = (acc.username || '').toLowerCase();
-  let rol = null;
+  store.setRemoto(ls.get('modo') === 'kozan');
   if (DEMO) {
+    let rol = null;
     try { rol = localStorage.getItem('demoRol'); } catch {}
     if (!ROLES.includes(rol)) rol = 'Administrador';
-  } else if (await store.meta('lastSync')) {
+    return (SES = { nombre: 'Usuario demo', correo: 'demo@local', rol });
+  }
+  if (modo() === 'terreno') {
+    const p = ls.get('perfilTerreno');
+    return (SES = p?.correo ? { nombre: p.nombre, correo: p.correo, rol: ROLES_TERRENO.includes(p.rol) ? p.rol : null } : null);
+  }
+  const acc = auth.account();
+  if (modo() !== 'kozan' || !acc) return (SES = null);
+  const correo = (acc.username || '').toLowerCase();
+  let rol = null;
+  if (await store.meta('lastSync')) {
     const us = await store.all('usuarios');
     // Sin usuarios cargados todavía: quien configura el sitio entra como administrador.
     if (!us.length) rol = 'Administrador';
@@ -85,7 +105,8 @@ async function cargarSesion() {
 // ---------- Marco: tab bar, barra superior, estado de conexión ----------
 
 function renderTabs(active) {
-  $('#tabs').innerHTML = TABS.map(([id, label, icon]) =>
+  // En terreno no hay panel de avance: el avance se calcula con lo aprobado en SharePoint.
+  $('#tabs').innerHTML = TABS.filter(([id]) => !(esTerreno() && id === 'inicio')).map(([id, label, icon]) =>
     `<button role="tab" aria-selected="${id === active}" aria-label="${label}" data-go="#/${id}">${ic(icon, 24)}<span>${label}</span></button>`).join('');
 }
 
@@ -108,14 +129,52 @@ addEventListener('scroll', () => {
 }, { passive: true });
 
 async function updatePill() {
-  const pend = await store.pendingCount();
+  const terreno = esTerreno();
+  const pend = terreno ? (await porEnviar()).length : await store.pendingCount();
   const pill = $('#pill');
   const off = !navigator.onLine;
+  const que = terreno ? 'por enviar' : 'por subir';
   pill.classList.toggle('show', off || pend > 0);
-  $('span', pill).textContent = off ? `Sin conexión${pend ? ` · ${pend} por subir` : ''}` : `${pend} por subir`;
+  $('span', pill).textContent = off ? `Sin conexión${pend ? ` · ${pend} ${que}` : ''}` : `${pend} ${que}${terreno ? ' · tocar para enviar' : ''}`;
+  pill.onclick = terreno && pend && !off ? () => enviarPendientes(true) : null;
+}
+
+// ---------- Terreno: envíos al buzón de Google Drive ----------
+
+const porEnviar = async () => (SES && !DEMO ? (await store.all('registros')).filter((r) => r.Estado === 'Enviado' && !r._drive && r.AutorCorreo === SES.correo) : []);
+
+// Sube cada registro enviado como paquete (datos + fotos + firma). Pedir la cuenta
+// Google abre una ventana, así que sin token vigente solo se hace tras un toque.
+let enviando = null;
+function enviarPendientes(manual = false) {
+  if (DEMO || !esTerreno() || !navigator.onLine || (!manual && !gdrive.hayToken())) return updatePill();
+  return (enviando ||= (async () => {
+    let n = 0;
+    try {
+      for (const r of await porEnviar()) {
+        const id = await gdrive.subir(await gdrive.empaquetar(r, fileRefs(r.Datos), store.getFile));
+        await store.save('registros', { Uid: r.Uid, _drive: id });
+        n++;
+      }
+      if (n) toast(n === 1 ? 'Enviado al administrador' : `${n} registros enviados al administrador`);
+    } catch (e) {
+      console.error(e);
+      toast(`No se pudo enviar (${e.message}). Queda pendiente.`, true);
+    } finally { enviando = null; }
+    await updatePill();
+    if (!formActual) route();
+  })());
+}
+
+// Terreno usa solo el catálogo de obras y etapas que trae la app.
+async function sembrarCatalogo() {
+  if ((await store.all('obras')).length) return;
+  for (const o of OBRAS_PROYECTO) await store.save('obras', o);
+  for (const p of ETAPAS_PROYECTO) await store.save('partidas', p);
 }
 
 async function trySync(manual = false) {
+  if (esTerreno()) return enviarPendientes(manual);
   if (DEMO || !auth.account() || !navigator.onLine) return updatePill();
   try {
     await store.sync();
@@ -197,14 +256,18 @@ async function datos() {
   return { obras, partidas, registros, filas, porEtapa };
 }
 
-// Lo que ve cada uno: administrador y supervisor de terraza ven todo lo enviado; los demás, lo suyo.
-const visibles = (regs) => regs.filter((r) => esExterno() ? r.Estado === 'Aprobado'
-  : r.AutorCorreo === SES.correo || (veTodo() && r.Estado !== 'Borrador'));
+// Lo que ve cada uno: el administrador, todo lo recibido; en terreno, lo propio;
+// quien consulta con cuenta Kozan, solo lo aprobado.
+const visibles = (regs) => regs.filter((r) => soloConsulta() ? r.Estado === 'Aprobado'
+  : r.AutorCorreo === SES.correo || (esAdmin() && r.Estado !== 'Borrador'));
+// El código correlativo lo asigna el administrador al aprobar.
+const codigoDe = (r) => r.Codigo || (r.Estado === 'Borrador' ? 'Borrador' : 'Sin código');
 const regRow = (r, obras) => `<button class="row" data-go="#/reg/${esc(r.Uid)}">
   <span class="ricon">${ic(FORMS[r.Tipo]?.icon, 20)}</span>
-  <div class="main"><div class="t">${esc(r.Codigo || 'Borrador')} · ${esc(FORMS[r.Tipo]?.corto || r.Tipo)}${pendIcon(r)}</div>
+  <div class="main"><div class="t">${esc(codigoDe(r))} · ${esc(FORMS[r.Tipo]?.corto || r.Tipo)}${pendIcon(r)}</div>
   <div class="s">${fmtDate(r.Fecha)}${obras[r.ObraUid] ? ' · ' + esc(obras[r.ObraUid].Codigo) : ''} · ${esc(r.Autor)}</div></div>${estadoBadge(r.Estado)}</button>`;
-const pendIcon = (r) => (r._pending ? ' <span class="badge warn" title="Pendiente de subir">●</span>' : '');
+const pendIcon = (r) => (r._pending ? ' <span class="badge warn" title="Pendiente de subir">●</span>'
+  : !DEMO && esTerreno() && r.Estado === 'Enviado' && !r._drive ? ' <span class="badge warn" title="Pendiente de envío">●</span>' : '');
 
 // ---------- Obras y etapas (administración) ----------
 
@@ -331,14 +394,14 @@ async function viewInicio(v) {
       ${tile('Protocolos diarios', deSemana.filter((r) => r.Tipo === 'PDA').length, 'esta semana')}
       ${tile('Horas máquina', horas.toLocaleString('es-CL', { maximumFractionDigits: 1 }), 'esta semana (horómetro)')}
       ${tile('Control topográfico', conf ? fmtPct(conf.pct, 0) : '—', conf ? `conforme · ${ultPCT.Codigo}` : 'sin controles')}
-      ${porRevisar != null ? tile('Por revisar', porRevisar, 'registros enviados', '#/registros?f=revisar') : esExterno() ? tile('Registros aprobados', visibles(registros).length, 'disponibles para consulta', '#/registros') : tile('Mis registros', visibles(registros).length, 'en total', '#/registros')}
+      ${porRevisar != null ? tile('Por revisar', porRevisar, 'registros recibidos', '#/registros?f=revisar') : soloConsulta() ? tile('Registros aprobados', visibles(registros).length, 'disponibles para consulta', '#/registros') : tile('Mis registros', visibles(registros).length, 'en total', '#/registros')}
     </div>
 
     <h3>Avance acumulado</h3>
     <div class="group chartbox">${chartSerie(serie)}</div>
     <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance global</th></tr></thead>
       <tbody>${serie.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td></tr>`).join('')}</tbody></table></details>
-    <p class="foot">Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman los protocolos diarios enviados.</p>
+    <p class="foot">Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman los protocolos diarios aprobados.</p>
 
     <h3>Avance por obra</h3>
     <div class="group">${conPeso.map((o) => {
@@ -349,7 +412,7 @@ async function viewInicio(v) {
     }).join('') || '<div class="row">Ninguna obra tiene peso asignado.</div>'}</div>
 
     <h3>Últimos registros</h3>
-    ${ultimos.length ? `<div class="group">${ultimos.map((r) => regRow(r, obrasMap)).join('')}</div>` : '<p class="foot">Todavía no hay registros enviados.</p>'}`;
+    ${ultimos.length ? `<div class="group">${ultimos.map((r) => regRow(r, obrasMap)).join('')}</div>` : '<p class="foot">Todavía no hay registros.</p>'}`;
   wireChart(v, serie);
 }
 
@@ -481,20 +544,25 @@ async function viewRegistros(v, filtro) {
   const { obras, registros } = await datos();
   const obrasMap = Object.fromEntries(obras.map((o) => [o.Uid, o]));
   const mios = registros.filter((r) => r.AutorCorreo === SES.correo);
-  const segs = esExterno() ? { todos: 'Aprobados' } : esAdmin()
+  const segs = soloConsulta() ? { todos: 'Aprobados' } : esAdmin()
     ? { revisar: `Por revisar (${registros.filter((r) => r.Estado === 'Enviado').length})`, todos: 'Todos', mios: 'Míos' }
-    : { mios: 'Míos', pendientes: `Por corregir (${mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador').length})`, ...(veTodo() ? { todos: 'Todos' } : {}) };
+    : { mios: 'Míos', pendientes: `Borradores (${mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador').length})` };
   const f = segs[filtro] ? filtro : Object.keys(segs)[0];
   const rows = (f === 'revisar' ? registros.filter((r) => r.Estado === 'Enviado')
     : f === 'todos' ? visibles(registros)
       : f === 'pendientes' ? mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador') : mios)
     .sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || '') || (b.Correlativo || 0) - (a.Correlativo || 0));
-  const tipos = Object.keys(FORMS).filter((t) => puede(SES.rol, t));
-  v.innerHTML = `<div class="head"><h1>Registros</h1>${tipos.length ? `<button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button>` : ''}</div>
+  const tipos = Object.keys(FORMS).filter(puedeLlenar);
+  const traer = esAdmin() && HAY_GOOGLE;
+  const nPend = (await porEnviar()).length;
+  v.innerHTML = `<div class="head"><h1>Registros</h1><span class="hbtns">${traer ? `<button class="round sec" id="traer" aria-label="Traer envíos de terreno">${ic('down')}</button>` : ''}${tipos.length ? `<button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button>` : ''}</span></div>
+    ${nPend ? `<div class="notice">${ic('send', 20)}<div><b>${nPend} ${nPend === 1 ? 'registro' : 'registros'} por enviar.</b> Se envían al administrador cuando hay señal.<br><button class="btn" id="enviarYa" style="margin-top:8px">Enviar ahora</button></div></div>` : ''}
     <div class="seg" role="tablist">${Object.entries(segs).map(([k, l]) => `<button role="tab" aria-selected="${k === f}" data-go="#/registros?f=${k}">${l}</button>`).join('')}</div>
     ${rows.length ? `<div class="group">${rows.map((r) => regRow(r, obrasMap)).join('')}</div>`
-      : `<div class="empty">${ic('prot', 48)}<b>${f === 'revisar' ? 'Nada por revisar' : 'Sin registros'}</b>${f === 'revisar' ? '' : tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : 'Aquí aparecerán los registros aprobados por el administrador.'}</div>`}`;
+      : `<div class="empty">${ic('prot', 48)}<b>${f === 'revisar' ? 'Nada por revisar' : 'Sin registros'}</b>${f === 'revisar' ? (traer ? 'Usa el botón ⤓ para traer los envíos de terreno desde Google Drive.' : '') : tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : 'Aquí aparecerán los registros aprobados por el administrador.'}</div>`}`;
   $('#nuevo') && ($('#nuevo').onclick = () => elegirTipo(tipos));
+  $('#traer') && ($('#traer').onclick = importarEnvios);
+  $('#enviarYa') && ($('#enviarYa').onclick = () => enviarPendientes(true));
 }
 
 function elegirTipo(tipos) {
@@ -517,21 +585,21 @@ async function viewRegistro(v, regUid, tipoNuevo) {
   if (regUid && !reg) { setNav('', '#/registros'); v.innerHTML = '<div class="empty"><b>Registro no encontrado</b></div>'; return; }
   const tipo = reg?.Tipo || tipoNuevo;
   const spec = FORMS[tipo];
-  if (!spec || (!reg && !puede(SES.rol, tipo))) { location.hash = '#/registros'; return; }
+  if (!spec || (!reg && !puedeLlenar(tipo))) { location.hash = '#/registros'; return; }
   const ctx = { obras, partidas, registros, usuario: SES.nombre, regUid: reg?.Uid || uid() };
   const propio = !reg || reg.AutorCorreo === SES.correo;
-  const editable = (!reg && puede(SES.rol, tipo)) || (reg && ['Borrador', 'Observado'].includes(reg.Estado) && (propio || esAdmin()));
+  const editable = (!reg && puedeLlenar(tipo)) || (reg && ['Borrador', 'Observado'].includes(reg.Estado) && propio && !soloConsulta());
   setNav(reg?.Codigo || spec.corto, '#/registros');
 
   if (!editable) return viewDoc(v, reg, ctx);
 
   v.innerHTML = `<div class="head"><h1 style="font-size:1.6rem">${esc(spec.titulo)}</h1></div>
-    <p class="foot">${tipo}${spec.rev ? ' · ' + esc(spec.rev) : ''} · ${reg?.Codigo ? esc(reg.Codigo) : 'el código se asigna al enviar'}</p>
+    <p class="foot">${tipo}${spec.rev ? ' · ' + esc(spec.rev) : ''} · ${reg?.Codigo ? esc(reg.Codigo) : 'el código se asigna al aprobar'}</p>
     ${reg?.Estado === 'Observado' ? `<div class="notice bad">${ic('info', 20)}<div><b>Observado por ${esc(reg.Revisor || 'el revisor')}.</b> ${esc(reg.Comentario || '')}<br>Corrige y vuelve a enviar.</div></div>` : ''}
     <div id="frm"></div>
     <p class="err" id="errs" hidden></p>
     <div class="actions noprint">
-      <button class="btn" id="enviar">Firmar y enviar</button>
+      <button class="btn" id="enviar">${esAdmin() ? 'Firmar y aprobar' : 'Firmar y enviar'}</button>
       <button class="btn sec" id="borrador">Guardar borrador</button>
       ${reg && reg.Estado === 'Borrador' ? '<button class="btn danger" id="descartar">Descartar borrador</button>' : ''}
     </div>`;
@@ -549,24 +617,22 @@ async function viewRegistro(v, regUid, tipoNuevo) {
     const rec = {
       Uid: ctx.regUid, Tipo: tipo, Fecha: d.fecha || today(), ObraUid: d.obra || spec.obraFija || '',
       Datos: d, Autor: reg?.Autor || SES.nombre, AutorCorreo: reg?.AutorCorreo || SES.correo,
-      Estado: enviar ? 'Enviado' : reg?.Estado || 'Borrador',
+      Estado: enviar ? 'Enviado' : reg?.Estado || 'Borrador', Title: `${reg?.Codigo || 'Borrador'} ${spec.corto}`,
     };
-    if (enviar) {
-      if (!reg?.Codigo) Object.assign(rec, nextCode(tipo, await store.all('registros')));
-      const cod = rec.Codigo || reg.Codigo;
-      // Fotos, firmas y adjuntos se suben a <carpeta>/<tipo>/<código>/ en SharePoint.
-      for (const ref of fileRefs(d)) {
-        const f = await store.getFile(ref.fid);
-        if (f && !f.driveId) await store.putFile({ ...f, regUid: ctx.regUid, path: `${tipo}/${cod}/${f.name}` });
-      }
-      rec.Title = `${cod} ${spec.corto}`;
-    } else rec.Title = `${reg?.Codigo || 'Borrador'} ${spec.corto}`;
-    await store.save('registros', rec);
+    // Lo que llena el administrador queda aprobado al firmarlo y recién ahí va a SharePoint.
+    if (enviar && esAdmin()) { await aprobar(rec); }
+    else {
+      // En terreno, "enviar" deja el paquete en cola para el buzón de Google Drive.
+      if (enviar) rec._drive = DEMO ? 'demo' : null;
+      await store.save('registros', rec, { local: esAdmin() });
+    }
     // La revisión de un transmittal lo aprueba u observa según su resultado.
     if (enviar && tipo === 'PRV' && d.transmittal) {
-      const ok = d.resultado !== 'Requiere corrección';
-      await store.save('registros', { Uid: d.transmittal, Estado: ok ? 'Aprobado' : 'Observado', Revisor: SES.nombre,
-        Comentario: `${rec.Codigo || reg.Codigo}: ${d.resultado}${d.comentario ? ' – ' + d.comentario : ''}` });
+      const trt = await store.get('registros', d.transmittal);
+      const prv = await store.get('registros', ctx.regUid);
+      const nota = `${prv.Codigo}: ${d.resultado}${d.comentario ? ' – ' + d.comentario : ''}`;
+      if (trt && d.resultado !== 'Requiere corrección') await aprobar(trt, { Comentario: nota });
+      else if (trt) await observar(trt, nota);
     }
     dirty = false;
     return true;
@@ -574,7 +640,11 @@ async function viewRegistro(v, regUid, tipoNuevo) {
 
   formActual = { guardarSiCambio: () => (dirty ? guardar(false) : null) };
   $('#enviar').onclick = async () => {
-    if (await guardar(true)) { formActual = null; toast('Registro enviado'); await updatePill(); trySync(); location.hash = '#/reg/' + ctx.regUid; route(); }
+    if (await guardar(true)) {
+      formActual = null;
+      toast(esAdmin() ? 'Registro aprobado' : DEMO ? 'Registro enviado' : 'Registro firmado; enviando al administrador…');
+      await updatePill(); trySync(true); location.hash = '#/reg/' + ctx.regUid; route();
+    }
   };
   $('#borrador').onclick = async () => {
     await guardar(false); formActual = null; toast('Borrador guardado'); await updatePill(); trySync();
@@ -585,35 +655,122 @@ async function viewRegistro(v, regUid, tipoNuevo) {
   });
 }
 
+// Aprobar: asigna el código correlativo, deja las fotos y firmas listas para la
+// biblioteca (<carpeta>/<tipo>/<código>/) y pone el registro en cola para SharePoint.
+async function aprobar(reg, extra = {}) {
+  const rec = { ...reg, ...extra, Estado: 'Aprobado', Revisor: SES.nombre };
+  if (!rec.Codigo) Object.assign(rec, nextCode(rec.Tipo, (await store.all('registros')).filter((r) => r.Uid !== rec.Uid)));
+  for (const ref of fileRefs(rec.Datos)) {
+    const f = await store.getFile(ref.fid);
+    if (f && !f.driveId) await store.putFile({ ...f, regUid: rec.Uid, path: `${rec.Tipo}/${rec.Codigo}/${f.name}` });
+  }
+  rec.Title = `${rec.Codigo} ${FORMS[rec.Tipo].corto}`;
+  return store.save('registros', rec);
+}
+
+// Observar: queda solo en el equipo del administrador (no va a SharePoint); el autor
+// se entera por correo, corrige en su app y lo vuelve a enviar.
+const observar = (reg, Comentario) => store.save('registros', { Uid: reg.Uid, Estado: 'Observado', Revisor: SES.nombre, Comentario }, { local: true });
+function avisar(reg) {
+  const t = `${FORMS[reg.Tipo].corto} del ${fmtDate(reg.Fecha)}`;
+  const body = `Hola ${reg.Autor}:\n\nTu registro "${t}" tiene observaciones:\n\n${reg.Comentario || ''}\n\n`
+    + 'Corrígelo en la app Obras DRF (Registros → abre el registro → Corregir y reenviar).\n\n' + SES.nombre;
+  location.href = `mailto:${reg.AutorCorreo}?subject=${encodeURIComponent('Obras DRF: ' + t + ' observado')}&body=${encodeURIComponent(body)}`;
+}
+
 // Vista de lectura / impresión, con aprobación del administrador.
 function viewDoc(v, reg, ctx) {
   const revisable = esAdmin() && reg.Estado === 'Enviado';
+  const avisable = esAdmin() && reg.Estado === 'Observado' && reg.AutorCorreo !== SES.correo && !DEMO;
+  const propioEnviado = esTerreno() && reg.AutorCorreo === SES.correo && reg.Estado === 'Enviado';
+  const estadoEnvio = propioEnviado && !DEMO ? (reg._drive
+    ? `<div class="notice noprint">${ic('check', 20)}<div><b>Enviado al administrador.</b> Queda en revisión. Si te piden corregir, usa «Corregir y reenviar».</div></div>`
+    : `<div class="notice noprint">${ic('send', 20)}<div><b>Pendiente de envío.</b> Se enviará cuando haya señal.</div></div>`) : '';
+  const origen = esAdmin() && reg._origen ? `<div class="notice noprint">${ic('down', 20)}<div>Recibido desde Google Drive · ${esc(reg._origen)}${reg._local ? ' · aún no está en SharePoint' : ''}</div></div>` : '';
   v.innerHTML = `<div class="actions top noprint">
       <button class="btn sec" id="print">${ic('print', 20)} Imprimir / guardar PDF</button>
       ${revisable ? `<button class="btn" id="aprobar">${ic('check', 20)} Aprobar</button><button class="btn danger" id="observar">Observar</button>` : ''}
-    </div>
+      ${avisable ? `<button class="btn sec" id="avisar">Avisar al autor por correo</button>` : ''}
+      ${propioEnviado && !DEMO && !reg._drive ? `<button class="btn" id="enviarYa">${ic('send', 20)} Enviar ahora</button>` : ''}
+      ${propioEnviado ? `<button class="btn sec" id="corregir">Corregir y reenviar</button>` : ''}
+    </div>${estadoEnvio}${origen}
     ${renderDoc(reg, ctx)}`;
   hydrate(v);
   $('#print').onclick = () => print();
+  $('#avisar') && ($('#avisar').onclick = () => avisar(reg));
+  $('#enviarYa') && ($('#enviarYa').onclick = () => enviarPendientes(true));
+  $('#corregir') && ($('#corregir').onclick = async () => {
+    await store.save('registros', { Uid: reg.Uid, Estado: 'Borrador', _drive: null });
+    await updatePill(); route();
+  });
   if (revisable) {
     $('#aprobar').onclick = async () => {
-      await store.save('registros', { Uid: reg.Uid, Estado: 'Aprobado', Revisor: SES.nombre });
-      toast('Registro aprobado'); await updatePill(); trySync(); route();
+      const r = await aprobar(reg);
+      toast(`Aprobado como ${r.Codigo}`); await updatePill(); trySync(); route();
     };
     $('#observar').onclick = () => openForm({
-      title: 'Observar registro', saveLabel: 'Enviar',
+      title: 'Observar registro', saveLabel: 'Observar',
       fields: [{ name: 'Comentario', label: 'Qué debe corregir', type: 'textarea', required: true }],
       onSave: async ({ Comentario }) => {
-        await store.save('registros', { Uid: reg.Uid, Estado: 'Observado', Revisor: SES.nombre, Comentario });
-        toast('Devuelto al autor con observaciones'); await updatePill(); trySync(); route();
+        const r = await observar(reg, Comentario);
+        toast('Observado: avísale al autor por correo'); await updatePill(); route();
+        if (!DEMO && r.AutorCorreo !== SES.correo) avisar(r);
       },
     });
   }
 }
 
+// Trae los envíos de terreno desde el buzón de Google Drive. El autor es el dueño
+// del archivo según Google (no lo que diga el paquete) y debe estar activo en la
+// lista de usuarios con un perfil que pueda llenar ese formato.
+async function importarEnvios() {
+  if (!navigator.onLine) return toast('Sin conexión', true);
+  let archivos;
+  try { await gdrive.cuentaAdmin(); archivos = await gdrive.bandeja(); } catch (e) { return toast(e.message, true); }
+  const vistos = (await store.meta('importados')) || {};
+  const usuarios = await store.all('usuarios');
+  const res = { nuevos: 0, actualizados: 0, omitidos: 0, rechazados: [] };
+  for (const f of archivos) {
+    if (vistos[f.id] === f.modifiedTime) continue;
+    const dueno = (f.owners?.[0]?.emailAddress || '').toLowerCase();
+    const u = usuarios.find((x) => (x.Correo || '').toLowerCase() === dueno && x.Activo !== false);
+    try {
+      if (!u) throw new Error(`${dueno} no está en la lista de usuarios (o está inactivo)`);
+      const p = await gdrive.bajar(f.id);
+      const r = p.registro;
+      if (!FORMS[r.Tipo]) throw new Error(`formato desconocido (${r.Tipo})`);
+      if (!puede(u.Rol, r.Tipo)) throw new Error(`${dueno} (${u.Rol}) no puede enviar ${FORMS[r.Tipo].corto}`);
+      const prev = await store.get('registros', r.Uid);
+      if (prev?.Estado === 'Aprobado') { res.omitidos++; vistos[f.id] = f.modifiedTime; continue; }
+      for (const a of p.archivos) await store.putFile({ id: a.fid, blob: a.blob, name: a.name, type: a.type, regUid: r.Uid });
+      await store.save('registros', {
+        ...r, Codigo: prev?.Codigo, Correlativo: prev?.Correlativo, Estado: 'Enviado', Autor: r.Autor || u.Title,
+        AutorCorreo: dueno, Revisor: prev?.Revisor, Comentario: prev?.Comentario, _drive: f.id, _origen: dueno,
+      }, { local: true });
+      res[prev ? 'actualizados' : 'nuevos']++;
+      vistos[f.id] = f.modifiedTime;
+    } catch (e) { res.rechazados.push({ nombre: f.name, motivo: e.message }); }
+  }
+  await store.meta('importados', vistos);
+  await store.meta('ultimaImportacion', new Date().toISOString());
+  const dlg = $('#sheet');
+  dlg.innerHTML = `<div class="sh-head"><span class="navbtn"></span><h2 id="shTitle">Envíos de terreno</h2><button type="button" class="navbtn" data-x style="font-weight:600">Listo</button></div>
+    <div class="sh-body"><div class="group kv">
+      <div class="row"><span class="k">Nuevos</span><span class="v">${res.nuevos}</span></div>
+      <div class="row"><span class="k">Corregidos (reenviados)</span><span class="v">${res.actualizados}</span></div>
+      <div class="row"><span class="k">Ya aprobados (sin cambios)</span><span class="v">${res.omitidos}</span></div>
+      <div class="row"><span class="k">Rechazados</span><span class="v">${res.rechazados.length}</span></div></div>
+      ${res.rechazados.length ? `<h3>Rechazados</h3><div class="group">${res.rechazados.map((x) => `<div class="row"><div class="main"><div class="t">${esc(x.nombre)}</div><div class="s">${esc(x.motivo)}</div></div></div>`).join('')}</div>
+      <p class="foot">Agrega o corrige al usuario en Ajustes → Usuarios y vuelve a traer los envíos.</p>` : ''}
+      <p class="foot">Los envíos quedan en este equipo para revisión. Solo lo que apruebes se sube a SharePoint.</p></div>`;
+  $('[data-x]', dlg).onclick = () => dlg.close();
+  dlg.showModal();
+  route();
+}
+
 const USUARIO_FIELDS = [
   { name: 'Title', label: 'Nombre', required: true },
-  { name: 'Correo', label: 'Correo', type: 'email', required: true, ph: 'nombre@atacamakozan.cl' },
+  { name: 'Correo', label: 'Correo', type: 'email', required: true, ph: 'cuenta Google (terreno) o Kozan' },
   { name: 'Rol', label: 'Perfil', type: 'select', options: ROLES },
   { name: 'Activo', label: 'Activo', type: 'select', options: ['Sí', 'No'] },
 ];
@@ -629,8 +786,41 @@ function editUsuario(u = {}) {
   });
 }
 
+function cerrarSesion() {
+  ls.del('modo');
+  if (esTerreno()) { gdrive.olvidar(); ls.del('perfilTerreno'); SES = null; store.setRemoto(false); return route(); }
+  auth.logout();
+}
+
+// Ajustes en terreno: cuenta Google, perfil y envíos pendientes.
+async function ajustesTerreno(v) {
+  const pend = (await porEnviar()).length;
+  v.innerHTML = `<div class="head"><h1>Ajustes</h1></div>
+    <h3>Cuenta Google</h3>
+    <div class="group kv">
+      <div class="row"><span class="k">Usuario</span><span class="v">${esc(SES.nombre)}</span></div>
+      <div class="row"><span class="k">Correo</span><span class="v">${esc(SES.correo)}</span></div>
+    </div>
+    <div class="group" style="margin-top:10px"><div class="field"><label for="perfil">Perfil</label><select id="perfil">${ROLES_TERRENO.map((r) => `<option${r === SES.rol ? ' selected' : ''}>${r}</option>`).join('')}</select></div></div>
+    <p class="foot">El administrador revisa que tu correo y tu perfil estén autorizados al recibir cada envío.</p>
+    <h3>Envíos</h3>
+    <div class="group kv">
+      <div class="row"><span class="k">Buzón del proyecto</span><span class="v">${esc(CONFIG.BUZON_CORREO)}</span></div>
+      <div class="row"><span class="k">Por enviar</span><span class="v">${pend}</span></div>
+    </div>
+    <div style="margin-top:10px">${pend ? `<button class="btn" id="enviarYa">${ic('send', 20)} Enviar pendientes</button>` : ''}
+      <button class="btn danger" id="logout" ${pend ? 'disabled' : ''}>Cerrar sesión</button></div>
+    <p class="foot">${pend ? 'Envía los pendientes antes de cerrar sesión. ' : ''}Cada envío queda en la carpeta «Obras DRF - Envíos» de tu Google Drive, compartida solo con la cuenta del proyecto. No la borres.</p>
+    <h3>Acerca de</h3>
+    <div class="group kv"><div class="row"><span class="k">Versión</span><span class="v">${CONFIG.VERSION}</span></div></div>`;
+  $('#perfil').onchange = (e) => { ls.set('perfilTerreno', { ...ls.get('perfilTerreno'), rol: e.target.value }); SES = null; route(); };
+  $('#enviarYa') && ($('#enviarYa').onclick = () => enviarPendientes(true));
+  $('#logout').onclick = cerrarSesion;
+}
+
 async function viewAjustes(v) {
   setNav('Ajustes');
+  if (esTerreno() && !DEMO) return ajustesTerreno(v);
   const last = await store.meta('lastSync');
   const pend = await store.pendingCount();
   const usuarios = (await store.all('usuarios')).sort((a, b) => (a.Title || '').localeCompare(b.Title || ''));
@@ -642,7 +832,7 @@ async function viewAjustes(v) {
       <div class="row"><span class="k">Perfil</span><span class="v">${esc(SES.rol)}</span></div>
     </div>
     ${DEMO ? `<div class="group" style="margin-top:10px"><div class="field"><label for="demoRol">Perfil de prueba</label><select id="demoRol">${ROLES.map((r) => `<option${r === SES.rol ? ' selected' : ''}>${r}</option>`).join('')}</select></div></div>
-      <p class="foot">Solo en modo demo: cambia el perfil para ver la app como topógrafo u operador.</p>`
+      <p class="foot">Solo en modo demo: cambia el perfil para ver la app como topógrafo u operador. Los perfiles de terreno ven la app como si entraran con su cuenta Google.</p>`
       : `<div style="margin-top:10px"><button class="btn danger" id="logout">Cerrar sesión</button></div>`}
     <h3>SharePoint</h3>
     <div class="group kv">
@@ -653,13 +843,21 @@ async function viewAjustes(v) {
     ${DEMO ? '' : `<div style="margin-top:10px"><button class="btn" id="syncNow">${ic('sync', 20)} Sincronizar ahora</button>
       ${esAdmin() ? '<button class="btn sec" id="prov">Revisar / crear listas</button>' : ''}</div>
       ${esAdmin() ? '<p class="foot">Crear listas requiere ser propietario del sitio. Solo se hace una vez.</p><div class="log" id="provLog" hidden></div>' : ''}`}
+    ${esAdmin() && HAY_GOOGLE ? `
+    <h3>Buzón de terreno (Google Drive)</h3>
+    <div class="group kv">
+      <div class="row"><span class="k">Cuenta del proyecto</span><span class="v">${esc(CONFIG.BUZON_CORREO)}</span></div>
+      <div class="row"><span class="k">Última importación</span><span class="v">${(await store.meta('ultimaImportacion')) ? new Date(await store.meta('ultimaImportacion')).toLocaleString('es-CL') : '—'}</span></div>
+    </div>
+    <div style="margin-top:10px"><button class="btn" id="traer">${ic('down', 20)} Traer envíos de terreno</button></div>
+    <p class="foot">Pide entrar con la cuenta Google del proyecto. Los envíos quedan en este equipo hasta que los apruebes.</p>` : ''}
     ${esAdmin() ? `
     <h3>Usuarios y perfiles</h3>
     ${usuarios.length ? `<div class="group">${usuarios.map((u) => `<button class="row" data-user="${esc(u.Uid)}"><div class="main"><div class="t">${esc(u.Title)}${pendIcon(u)}</div>
       <div class="s">${esc(u.Correo)}</div></div><span class="badge ${u.Activo === false ? 'bad' : ''}">${u.Activo === false ? 'Inactivo' : esc(u.Rol)}</span></button>`).join('')}</div>`
       : '<p class="foot">Sin usuarios. Mientras la lista esté vacía, todos entran como administrador: agrega al menos a los administradores.</p>'}
     <div style="margin-top:10px"><button class="btn sec" id="addUser">${ic('plus', 20)} Agregar usuario</button></div>
-    <p class="foot">Administrador: ingenieros de proyectos y TI (obras, etapas, usuarios y aprobación). Supervisor de terraza: protocolo diario, maquinarias y humectación; ve los registros de todos. Supervisor empresa colaboradora: externo, ingresa con el correo de su empresa (o personal) y solo consulta los registros aprobados. Topógrafo: protocolos topográficos, transmittal y PANDA. Operador: maquinarias, humectación y protocolo diario.</p>
+    <p class="foot">Administrador: ingenieros de proyectos y TI, con cuenta Kozan (obras, etapas, usuarios, revisión y aprobación). Supervisor de terraza, topógrafo y operador: llenan sus formatos con su cuenta Google (correo personal o de empresa); registra aquí ese correo. Supervisor empresa colaboradora: externo, invitado al sitio con su correo; solo consulta lo aprobado. Cualquier perfil que entre con cuenta Kozan y no sea administrador solo consulta lo aprobado.</p>
     <h3>Proyecto</h3>
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
@@ -667,10 +865,11 @@ async function viewAjustes(v) {
     <div class="group kv"><div class="row"><span class="k">Versión</span><span class="v">${CONFIG.VERSION}</span></div></div>`;
   $('#demoRol') && ($('#demoRol').onchange = async (e) => { try { localStorage.setItem('demoRol', e.target.value); } catch {} await cargarSesion(); route(); });
   $('#cargar') && ($('#cargar').onclick = cargarCatalogo);
+  $('#traer') && ($('#traer').onclick = importarEnvios);
   $('#addUser') && ($('#addUser').onclick = () => editUsuario());
   v.querySelectorAll('[data-user]').forEach((b) => (b.onclick = () => editUsuario(usuarios.find((u) => u.Uid === b.dataset.user))));
   if (DEMO) return;
-  $('#logout').onclick = () => auth.logout();
+  $('#logout').onclick = cerrarSesion;
   $('#syncNow').onclick = () => trySync(true);
   $('#prov') && ($('#prov').onclick = async () => {
     const log = $('#provLog'); log.hidden = false; log.textContent = '';
@@ -691,11 +890,41 @@ async function viewAjustes(v) {
 function viewLogin(v) {
   setNav('');
   $('#tabs').innerHTML = '';
-  v.innerHTML = `<div class="empty" style="padding-top:18vh">
+  v.innerHTML = `<div class="empty" style="padding-top:14vh">
     <img src="icon.svg" width="84" height="84" alt="" style="border-radius:20px"><br><br>
-    <b style="font-size:1.75rem">Obras DRF</b>Protocolos, reportes de operación y avance de obras.<br>Entra con tu cuenta de Atacama Kozan.<br><br>
-    <button class="btn" id="login">Iniciar sesión con Microsoft</button></div>`;
-  $('#login').onclick = () => auth.login();
+    <b style="font-size:1.75rem">Obras DRF</b>Protocolos, reportes de operación y avance de obras.<br><br>
+    ${HAY_GOOGLE ? `<button class="btn" id="loginG">Llenar protocolos · Entrar con Google</button>
+      <p class="foot">Operadores, topógrafos y supervisores de terraza, con su correo personal o de empresa.</p>` : ''}
+    ${HAY_KOZAN ? `<button class="btn${HAY_GOOGLE ? ' sec' : ''}" id="loginM">Administrar o consultar · Entrar con Microsoft</button>
+      <p class="foot">Ingenieros de proyectos, TI y usuarios invitados al sitio de SharePoint.</p>` : ''}</div>`;
+  $('#loginM') && ($('#loginM').onclick = () => { ls.set('modo', 'kozan'); auth.login(); });
+  $('#loginG') && ($('#loginG').onclick = async () => {
+    try {
+      const u = await gdrive.login();
+      const prev = ls.get('perfilTerreno');
+      ls.set('perfilTerreno', { ...(prev?.correo === u.correo ? prev : {}), ...u });
+      ls.set('modo', 'terreno');
+      SES = null; route();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+// Primera vez en terreno: nombre y perfil (el administrador los valida al importar).
+function viewPerfil(v) {
+  setNav('');
+  $('#tabs').innerHTML = '';
+  v.innerHTML = `<div class="head"><h1>Tu perfil</h1></div>
+    <p class="foot">Entraste como ${esc(SES.correo)}. Indica tu nombre y perfil para ver tus formatos.</p>
+    <div class="group">
+      <div class="field"><label for="pn">Nombre</label><input id="pn" value="${esc(SES.nombre)}"></div>
+      <div class="field"><label for="pr">Perfil</label><select id="pr">${ROLES_TERRENO.map((r) => `<option>${r}</option>`).join('')}</select></div>
+    </div>
+    <div style="margin-top:12px"><button class="btn" id="ok">Continuar</button><button class="btn danger" id="salir">Usar otra cuenta</button></div>`;
+  $('#ok').onclick = () => {
+    ls.set('perfilTerreno', { ...ls.get('perfilTerreno'), nombre: $('#pn').value.trim() || SES.nombre, rol: $('#pr').value });
+    SES = null; location.hash = '#/registros'; route();
+  };
+  $('#salir').onclick = cerrarSesion;
 }
 
 async function viewSinAcceso(v) {
@@ -708,18 +937,21 @@ async function viewSinAcceso(v) {
       : `Tu cuenta (${esc(SES.correo)}) no tiene perfil en Obras DRF. Pide a un ingeniero de proyectos que te agregue en Ajustes → Usuarios.`}<br><br>
     <button class="btn" id="retry">${ic('sync', 20)} Reintentar</button><button class="btn danger" id="logout">Cerrar sesión</button></div>`;
   $('#retry').onclick = () => trySync(true).then(route);
-  $('#logout').onclick = () => auth.logout();
+  $('#logout').onclick = cerrarSesion;
 }
 
 // ---------- Router ----------
 
 async function route() {
   const v = $('#view');
-  if (!DEMO && !auth.account()) return viewLogin(v);
   if (!SES) await cargarSesion();
-  if (!SES?.rol) return viewSinAcceso(v);
+  if (!SES) return viewLogin(v);
+  if (esTerreno() && !SES.rol) return viewPerfil(v);
+  if (!SES.rol) return viewSinAcceso(v);
+  if (esTerreno()) await sembrarCatalogo();
   const [path, query = ''] = location.hash.slice(1).split('?');
-  const [, name = 'inicio', arg] = path.split('/');
+  let [, name = 'inicio', arg] = path.split('/');
+  if (!name || (name === 'inicio' && esTerreno())) name = esTerreno() ? 'registros' : 'inicio';
   const tab = { obra: 'obras', nuevo: 'registros', reg: 'registros' }[name] || name;
   renderTabs(TABS.some(([id]) => id === tab) ? tab : 'inicio');
   document.body.classList.toggle('docview', name === 'reg');

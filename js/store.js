@@ -1,12 +1,17 @@
 // Almacenamiento local (IndexedDB) + bandeja de salida para trabajar sin señal.
 // Todo cambio se guarda primero aquí; sync() lo sube a SharePoint cuando hay red.
 // Fotos, firmas y adjuntos viven en "files" hasta subirse a la biblioteca del sitio.
+// En terreno (cuenta Google) y en modo demo nada va a SharePoint: remoto = false.
+// Los envíos importados por el administrador quedan locales ({ local: true })
+// hasta que los aprueba; recién ahí entran a la bandeja de salida.
 import { CONFIG, DEMO } from '../config.js';
 import { LISTS, fieldNames } from './schema.js';
 import * as graph from './graph.js';
 
 const DB = 'obrasdrf';
 let db;
+let remoto = !DEMO;
+export const setRemoto = (v) => { remoto = !DEMO && v; };
 
 function open() {
   if (db) return Promise.resolve(db);
@@ -49,12 +54,13 @@ export async function get(list, Uid) {
   return r?.data;
 }
 
-// Guarda un registro local y lo deja en cola para subir.
-export async function save(list, data) {
+// Guarda un registro local y lo deja en cola para subir (salvo { local: true }).
+export async function save(list, data, { local = false } = {}) {
   const prev = await get(list, data.Uid);
-  const merged = { ...prev, ...data, _pending: !DEMO };
+  const sube = remoto && !local;
+  const merged = { ...prev, ...data, _pending: sube, _local: local || undefined };
   await tx('items', 'readwrite', (s) => s.put({ key: `${list}:${data.Uid}`, list, data: merged }));
-  if (!DEMO) await tx('outbox', 'readwrite', (s) => s.put({ key: `${list}:${data.Uid}`, list, Uid: data.Uid, at: Date.now() }));
+  if (sube) await tx('outbox', 'readwrite', (s) => s.put({ key: `${list}:${data.Uid}`, list, Uid: data.Uid, at: Date.now() }));
   return merged;
 }
 
@@ -62,7 +68,7 @@ export async function save(list, data) {
 export async function remove(list, Uid) {
   const prev = await get(list, Uid);
   await tx('items', 'readwrite', (s) => s.delete(`${list}:${Uid}`));
-  if (DEMO) return;
+  if (!remoto) return;
   if (prev?._spId) await tx('outbox', 'readwrite', (s) => s.put({ key: `${list}:${Uid}`, list, Uid, del: prev._spId, at: Date.now() }));
   else await tx('outbox', 'readwrite', (s) => s.delete(`${list}:${Uid}`));
 }
@@ -88,7 +94,7 @@ export async function fileUrl(ref) {
   if (!ref) return '';
   if (urls.has(ref.fid)) return urls.get(ref.fid);
   let f = await getFile(ref.fid);
-  if (!f?.blob && ref.driveId && !DEMO) {
+  if (!f?.blob && ref.driveId && remoto) {
     const blob = await graph.downloadFile(ref.driveId);
     f = await putFile({ ...(f || {}), id: ref.fid, blob, name: ref.name, type: blob.type, driveId: ref.driveId });
   }
@@ -137,7 +143,7 @@ let syncing = null;
 
 // Sube archivos y bandeja de salida, y luego baja todo desde SharePoint.
 export function sync() {
-  if (DEMO) return Promise.resolve({ subidos: 0, demo: true });
+  if (!remoto) return Promise.resolve({ subidos: 0, local: true });
   return (syncing ||= (async () => {
     try {
       await uploadFiles();

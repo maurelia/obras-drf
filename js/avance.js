@@ -2,7 +2,7 @@
 // avance etapa = AvanceBase + Σ "avance del día" de los protocolos diarios enviados (tope 100 %);
 // avance obra = Σ peso etapa × avance etapa; avance global = Σ peso obra × avance obra.
 
-const CUENTA = new Set(['Enviado', 'Aprobado']); // los observados no suman hasta corregirse
+const CUENTA = new Set(['Aprobado']); // solo lo aprobado, que es lo que se sube a SharePoint
 
 // Filas de avance de los protocolos diarios: [{ fecha, etapa, avance, reg }]
 export function filasAvance(registros) {

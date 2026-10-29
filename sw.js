@@ -1,9 +1,9 @@
 // Service worker: deja la app disponible sin señal. Los datos viajan por
-// Graph (nunca se cachean aquí); los cambios offline viven en IndexedDB.
-const CACHE = 'obrasdrf-v5';
+// Graph y la API de Drive (nunca se cachean aquí); los cambios offline viven en IndexedDB.
+const CACHE = 'obrasdrf-v6';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.json', 'icon.svg', 'vendor/msal-browser.min.js',
-  'js/app.js', 'js/auth.js', 'js/graph.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
+  'js/app.js', 'js/auth.js', 'js/graph.js', 'js/gdrive.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
   'js/forms.js', 'js/engine.js', 'js/avance.js',
 ];
 

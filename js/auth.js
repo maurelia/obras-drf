@@ -1,6 +1,6 @@
 // Login con la cuenta Microsoft 365 de Atacama Kozan (MSAL, flujo redirect,
 // que funciona mejor que los popups en la PWA instalada en el teléfono).
-import { CONFIG, DEMO } from '../config.js';
+import { CONFIG, DEMO, HAY_KOZAN } from '../config.js';
 
 export const SCOPES = ['User.Read', 'Sites.ReadWrite.All'];
 export const ADMIN_SCOPES = ['Sites.Manage.All']; // solo para crear las listas
@@ -8,7 +8,7 @@ export const ADMIN_SCOPES = ['Sites.Manage.All']; // solo para crear las listas
 let pca = null;
 
 export async function initAuth() {
-  if (DEMO) return null;
+  if (!HAY_KOZAN) return null;
   pca = new msal.PublicClientApplication({
     auth: {
       clientId: CONFIG.CLIENT_ID,
