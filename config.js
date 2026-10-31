@@ -8,8 +8,8 @@
 // en este equipo, sin contraseñas.
 export const CONFIG = {
   // Google (obligatorio)
-  GOOGLE_CLIENT_ID: '',     // Id. de cliente OAuth (aplicación web) en Google Cloud
-  BUZON_URL: '',            // URL …/exec de la aplicación web de Apps Script (buzon/Code.gs)
+  GOOGLE_CLIENT_ID: '811261991852-gvh71bipgm609q6ucfcl4cjju8nmkgk9.apps.googleusercontent.com',     // Id. de cliente OAuth (aplicación web) en Google Cloud
+  BUZON_URL: 'https://script.google.com/macros/s/AKfycbzyixlzs0i8o6RUx6D36n8EtzupHDDphgaQIcfkwVHmNQVaaVohJ5HKe5JdXFix_ipN/exec',            // URL …/exec de la aplicación web de Apps Script (buzon/Code.gs)
   // SharePoint de proyectos (para subir lo visado)
   CLIENT_ID: '',            // Id. de aplicación (cliente) del registro en Entra ID
   TENANT_ID: '',            // Id. de directorio (inquilino) de Atacama Kozan
@@ -18,7 +18,7 @@ export const CONFIG = {
   BIBLIOTECA: '',           // biblioteca de documentos; vacío = la principal (Documentos)
   CARPETA: 'OBRAS FLUVIALES/07_PROTOCOLOS/03_REGISTROS_APP', // carpeta de las Obras Fluviales dentro de la biblioteca
   LIST_PREFIX: 'DRF_',      // prefijo de las listas (base del panel y de Power BI)
-  VERSION: '0.5.0',
+  VERSION: '0.5.1',
 };
 
 export const PROYECTO = {

@@ -14,7 +14,7 @@
  * (debe ser de nuestro cliente OAuth) y de ahí sale el correo. Quien publica el
  * script es siempre administrador; los demás perfiles se asignan en la app.
  */
-const CLIENT_ID = '';                 // = GOOGLE_CLIENT_ID de config.js
+const CLIENT_ID = '811261991852-gvh71bipgm609q6ucfcl4cjju8nmkgk9.apps.googleusercontent.com';                 // = GOOGLE_CLIENT_ID de config.js
 const PROYECTO = 'DRF-OF-2509-06';
 const SIGLA = 'OF';                   // códigos de registro: PDA-OF-001
 const RAIZ = 'Obras DRF';
