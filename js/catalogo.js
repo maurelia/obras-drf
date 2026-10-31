@@ -77,8 +77,20 @@ const PLAN = {
 // Pesos en obras definitivas (%), preliminares: costo directo estimado en
 // 01_DOCUMENTOS\Pesos_Obras_Definitivas_Rev0.xlsx (no hay presupuesto oficial).
 export const PESO_DEF = { 'CR-1': 32, 'CC-1': 29, 'CR-2': 14, 'CR-3': 9, 'RD-1': 9, 'CD-1': 3, VE: 2, DE: 2 };
-// Etapas definitivas conocidas: CC-1 ya construido.
-const PLAN_DEF = { 'CC-1': { Estado: 'Terminada', etapas: [['Canal de contorno construido', 100, 100]] } };
+// Etapas definitivas: partidas del APU 02_APU_Plazos_ObrasFluviales_REVD (G-02 replanteo 5 %, G-03
+// terminaciones 2 %, el resto según el costo estimado; hoja Etapas de Pesos_Obras_Definitivas_Rev0.xlsx).
+// El hormigón armado (sin APU) se divide en moldaje y enfierradura / hormigonado / curado. CC-1 ya construido.
+const D_INI = ['Replanteo y control topográfico', 5], D_FIN = ['Terminaciones, as-built y recepción', 2];
+const PLAN_DEF = {
+  'CR-1': { etapas: [D_INI, ['Movimiento de tierras en cubeta (corte y relleno)', 14], ['Perfilado y compactación de subrasante', 4], ['Geotextil y geomembrana HDPE', 34], ['Selección y acopio de roca', 6], ['Mampostería de piedra', 35], D_FIN] },
+  'CR-2': { etapas: [D_INI, ['Movimiento de tierras en cubeta (corte y relleno)', 13], ['Perfilado y compactación de subrasante', 4], ['Geotextil y geomembrana HDPE', 35], ['Selección y acopio de roca', 6], ['Mampostería de piedra', 35], D_FIN] },
+  'CR-3': { etapas: [D_INI, ['Movimiento de tierras en cubeta (corte y relleno)', 11], ['Perfilado y compactación de subrasante', 4], ['Geotextil y geomembrana HDPE', 36], ['Selección y acopio de roca', 6], ['Mampostería de piedra', 36], D_FIN] },
+  VE: { etapas: [D_INI, ['Excavación', 2], ['Moldaje y enfierradura', 41], ['Hormigonado', 41], ['Curado y desmolde', 9], D_FIN] },
+  'CD-1': { etapas: [D_INI, ['Excavación', 11], ['Perfilado y compactación de subrasante', 7], ['Selección y acopio de roca', 11], ['Mampostería de piedra', 64], D_FIN] },
+  'RD-1': { etapas: [D_INI, ['Anclajes', 4], ['Moldaje y enfierradura', 40], ['Hormigonado', 40], ['Curado y desmolde', 9], D_FIN] },
+  DE: { etapas: [D_INI, ['Revestimiento de hormigón', 72], ['Selección y acopio de roca', 8], ['Empedrado de protección', 13], D_FIN] },
+  'CC-1': { Estado: 'Terminada', etapas: [['Canal de contorno construido', 100, 100]] },
+};
 
 export const ETAPAS_PROYECTO = [];
 for (const o of OBRAS_PROYECTO) {
