@@ -198,6 +198,7 @@ async function bajarDatos(interactivo = false) {
   await store.reemplazar('registros', d.registros.map((r) => ({ ...r, _drive: r.Carpeta || 'ok' })),
     (r) => r.Estado === 'Borrador' || (r.Estado === 'Enviado' && !r._drive));
   await store.meta('lastSync', new Date().toISOString());
+  return d;
 }
 
 // Guarda usuarios, obras o etapas: primero en el buzón (fuente de verdad), luego aquí.
@@ -378,10 +379,13 @@ function editPartida(obraUid, p = {}) {
 
 // Agrega obras y etapas del catálogo que falten (por código / Uid), en el buzón y aquí.
 async function cargarCatalogo() {
+  // Fuera del demo se compara con lo que tiene el buzón (fuente de verdad), no con la
+  // copia local: el teléfono puede tener el catálogo sembrado sin que el buzón lo tenga.
+  let remoto = null;
   if (!DEMO) {
-    try { await bajarDatos(true); } catch (e) { return toast(`Sin conexión con el buzón: ${e.message}`, true); }
+    try { remoto = await bajarDatos(true); } catch (e) { return toast(`Sin conexión con el buzón: ${e.message}`, true); }
   }
-  const obras = await store.all('obras');
+  const obras = remoto ? remoto.obras : await store.all('obras');
   const porCodigo = Object.fromEntries(obras.map((o) => [(o.Codigo || '').toUpperCase(), o]));
   const nuevasObras = [];
   for (const o of OBRAS_PROYECTO) {
@@ -389,7 +393,7 @@ async function cargarCatalogo() {
     if (!ex) nuevasObras.push(o);
     else if (ex.Peso == null && o.Peso) nuevasObras.push({ ...sinPrivados(ex), Peso: o.Peso });
   }
-  const partidas = new Set((await store.all('partidas')).map((p) => p.Uid));
+  const partidas = new Set((remoto ? remoto.partidas : await store.all('partidas')).map((p) => p.Uid));
   const obraUid = Object.fromEntries([...obras, ...nuevasObras].map((o) => [o.Codigo, o.Uid]));
   const nuevasEtapas = ETAPAS_PROYECTO.filter((p) => !partidas.has(p.Uid)).map((p) => {
     const cod = OBRAS_PROYECTO.find((o) => o.Uid === p.ObraUid).Codigo;
