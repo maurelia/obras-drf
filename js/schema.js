@@ -1,4 +1,4 @@
-// Estructura de las listas de SharePoint. Cada registro lleva un Uid generado
+// Estructura de las listas de SharePoint (lo visado; base del panel y de Power BI). Cada registro lleva un Uid generado
 // en el teléfono, así se puede crear sin señal y relacionar antes de sincronizar.
 // El contenido de cada formulario (protocolo, registro) va en "Datos" como JSON;
 // fotos, firmas y adjuntos van como archivos a la biblioteca Documentos del sitio.
@@ -8,7 +8,6 @@ const text = (name, extra = {}) => ({ name, text: { maxLength: 255 }, ...extra }
 const note = (name) => ({ name, text: { allowMultipleLines: true, linesForEditing: 6 } });
 const num = (name) => ({ name, number: {} });
 const date = (name) => ({ name, dateTime: { format: 'dateOnly' } });
-const bool = (name) => ({ name, boolean: {} });
 const choice = (name, choices) => ({ name, choice: { choices, displayAs: 'dropDownMenu' } });
 
 export const ROLES = ['Administrador', 'Supervisor de terraza', 'Supervisor empresa colaboradora', 'Topógrafo', 'Operador'];
@@ -42,13 +41,11 @@ export const LISTS = {
       text('Uid', { indexed: true }), text('ObraUid', { indexed: true }), choice('Tipo', TIPOS_REG),
       num('Correlativo'), text('Codigo'), date('Fecha'), text('Autor'), text('AutorCorreo', { indexed: true }),
       choice('Estado', ESTADOS_REG), note('Datos'), text('Revisor'), note('Comentario'),
+      note('Documento'), date('FechaVisado'),
     ],
   },
-  usuarios: {
-    title: 'Usuarios',
-    columns: [text('Uid', { indexed: true }), text('Correo', { indexed: true }), choice('Rol', ROLES), bool('Activo')],
-  },
 };
+// Los usuarios y perfiles viven en el buzón de Google Drive, no en SharePoint.
 
 // Campos que se leen/escriben (Title + columnas propias).
 export const fieldNames = (key) => ['Title', ...LISTS[key].columns.map((c) => c.name)];

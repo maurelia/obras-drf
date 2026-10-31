@@ -94,22 +94,33 @@ export async function updateItem(key, spId, fields) {
   await call(`/sites/${siteId}/lists/${listIds[key]}/items/${spId}/fields`, { method: 'PATCH', body: fields });
 }
 
-// ---------- Archivos en la biblioteca Documentos del sitio ----------
+// ---------- Archivos en la biblioteca de documentos del sitio ----------
 
-const encPath = (p) => p.split('/').map(encodeURIComponent).join('/');
+const encPath = (p) => p.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+let driveBase = null;
 
-// Sube un archivo; sobre 4 MB usa sesión de carga por partes (adjuntos grandes).
-export async function uploadFile(path, blob) {
+// Biblioteca configurada (CONFIG.BIBLIOTECA) o la principal del sitio.
+async function biblioteca() {
+  if (driveBase) return driveBase;
   const sid = await site();
-  const base = `/sites/${sid}/drive/root:/${encPath(path)}:`;
+  if (!CONFIG.BIBLIOTECA) return (driveBase = `/sites/${sid}/drive`);
+  const { value } = await call(`/sites/${sid}/drives?$select=id,name`);
+  const d = value.find((x) => x.name.toLowerCase() === CONFIG.BIBLIOTECA.toLowerCase());
+  if (!d) throw new Error(`No existe la biblioteca «${CONFIG.BIBLIOTECA}» en el sitio (hay: ${value.map((x) => x.name).join(', ')})`);
+  return (driveBase = `/drives/${d.id}`);
+}
+
+// Sube un archivo (reemplaza si ya existe); sobre 4 MB usa sesión de carga por partes.
+export async function uploadFile(path, blob) {
+  const base = `${await biblioteca()}/root:/${encPath(path)}:`;
   if (blob.size <= 4 * 1024 * 1024) {
-    const res = await fetch(G + base + '/content?@microsoft.graph.conflictBehavior=rename', {
+    const res = await fetch(G + base + '/content?@microsoft.graph.conflictBehavior=replace', {
       method: 'PUT', headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
     });
     if (!res.ok) throw new Error(`Subida ${path}: ${res.status}`);
     return res.json();
   }
-  const { uploadUrl } = await call(base + '/createUploadSession', { method: 'POST', body: { item: { '@microsoft.graph.conflictBehavior': 'rename' } } });
+  const { uploadUrl } = await call(base + '/createUploadSession', { method: 'POST', body: { item: { '@microsoft.graph.conflictBehavior': 'replace' } } });
   const CH = 5 * 320 * 1024; // múltiplo de 320 KiB, como exige Graph
   for (let i = 0; i < blob.size; i += CH) {
     const end = Math.min(i + CH, blob.size);
@@ -120,8 +131,7 @@ export async function uploadFile(path, blob) {
 }
 
 export async function downloadFile(itemId) {
-  const sid = await site();
-  const res = await fetch(`${G}/sites/${sid}/drive/items/${itemId}/content`, { headers: { Authorization: `Bearer ${await token()}` } });
+  const res = await fetch(`${G}${await biblioteca()}/items/${itemId}/content`, { headers: { Authorization: `Bearer ${await token()}` } });
   if (!res.ok) throw new Error(`Descarga: ${res.status}`);
   return res.blob();
 }

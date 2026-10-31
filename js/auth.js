@@ -1,6 +1,7 @@
-// Login con la cuenta Microsoft 365 de Atacama Kozan (MSAL, flujo redirect,
-// que funciona mejor que los popups en la PWA instalada en el teléfono).
-import { CONFIG, DEMO, HAY_KOZAN } from '../config.js';
+// Cuenta Microsoft 365 de Atacama Kozan (MSAL). La usa el administrador para
+// subir lo visado a SharePoint (ventana emergente, para no perder lo que está
+// haciendo) y quien entra solo a consultar (flujo redirect, mejor en el teléfono).
+import { CONFIG, HAY_KOZAN } from '../config.js';
 
 export const SCOPES = ['User.Read', 'Sites.ReadWrite.All'];
 export const ADMIN_SCOPES = ['Sites.Manage.All']; // solo para crear las listas
@@ -24,22 +25,32 @@ export async function initAuth() {
   return account();
 }
 
-export function account() {
-  if (DEMO) return { name: 'Usuario demo', username: 'demo@local' };
-  return pca?.getActiveAccount() || null;
-}
+export const account = () => pca?.getActiveAccount() || null;
 
 export const login = () => pca.loginRedirect({ scopes: SCOPES });
 export const logout = () => pca.logoutRedirect({ account: account() });
 
-export async function token(scopes = SCOPES) {
+// Conecta la cuenta Microsoft sin salir de la app (administrador).
+export async function conectar() {
+  if (!pca) throw new Error('SharePoint no está configurado (falta CLIENT_ID en config.js)');
+  if (account()) return account();
+  const r = await pca.loginPopup({ scopes: SCOPES, prompt: 'select_account' });
+  pca.setActiveAccount(r.account);
+  return r.account;
+}
+
+export async function desconectar() {
   const acc = account();
-  if (!acc) throw new Error('Sin sesión');
+  if (acc) await pca.clearCache({ account: acc });
+}
+
+export async function token(scopes = SCOPES) {
+  const acc = account() || await conectar();
   try {
     return (await pca.acquireTokenSilent({ scopes, account: acc })).accessToken;
   } catch (e) {
     if (e instanceof msal.InteractionRequiredAuthError) {
-      await pca.acquireTokenRedirect({ scopes, account: acc });
+      return (await pca.acquireTokenPopup({ scopes, account: acc })).accessToken;
     }
     throw e;
   }

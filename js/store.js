@@ -1,9 +1,7 @@
-// Almacenamiento local (IndexedDB) + bandeja de salida para trabajar sin señal.
-// Todo cambio se guarda primero aquí; sync() lo sube a SharePoint cuando hay red.
-// Fotos, firmas y adjuntos viven en "files" hasta subirse a la biblioteca del sitio.
-// En terreno (cuenta Google) y en modo demo nada va a SharePoint: remoto = false.
-// Los envíos importados por el administrador quedan locales ({ local: true })
-// hasta que los aprueba; recién ahí entran a la bandeja de salida.
+// Almacenamiento local (IndexedDB) para trabajar sin señal.
+// Con cuenta Google (terreno y administrador) todo vive aquí y en el buzón de
+// Google Drive: remoto = false. Solo la consulta con cuenta Kozan usa sync(),
+// que baja de SharePoint lo ya publicado. Fotos, firmas y adjuntos viven en "files".
 import { CONFIG, DEMO } from '../config.js';
 import { LISTS, fieldNames } from './schema.js';
 import * as graph from './graph.js';
@@ -71,6 +69,17 @@ export async function remove(list, Uid) {
   if (!remoto) return;
   if (prev?._spId) await tx('outbox', 'readwrite', (s) => s.put({ key: `${list}:${Uid}`, list, Uid, del: prev._spId, at: Date.now() }));
   else await tx('outbox', 'readwrite', (s) => s.delete(`${list}:${Uid}`));
+}
+
+// Deja la lista igual a "rows" (lo que manda el buzón), salvo los locales que keep() conserva.
+export async function reemplazar(list, rows, keep = () => false) {
+  const actuales = await all(list);
+  const quedan = new Set(actuales.filter(keep).map((r) => r.Uid));
+  const ids = new Set(rows.map((r) => r.Uid));
+  await tx('items', 'readwrite', (s) => {
+    for (const r of actuales) if (!ids.has(r.Uid) && !quedan.has(r.Uid)) s.delete(`${list}:${r.Uid}`);
+    for (const r of rows) if (!quedan.has(r.Uid)) s.put({ key: `${list}:${r.Uid}`, list, data: r });
+  });
 }
 
 export const pendingCount = () => tx('outbox', 'readonly', (s) => reqP(s.count()));

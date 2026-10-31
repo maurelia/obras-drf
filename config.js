@@ -1,19 +1,24 @@
-// Configuración de la app. Hay dos formas de entrar:
-// - Terreno (cuenta Google): llena protocolos y los envía al buzón en Google Drive.
-// - Kozan (cuenta Microsoft): el administrador importa, revisa y sube lo aprobado a
-//   SharePoint; los demás perfiles con cuenta Kozan solo consultan lo aprobado.
-// Con CLIENT_ID y GOOGLE_CLIENT_ID vacíos la app corre en "modo demo": todo queda
-// en este equipo, sin login. Ver README.md para obtener los valores.
+// Configuración de la app (ver README.md para obtener cada valor).
+// - Todos entran con su cuenta Google. Lo que se firma queda en el Google Drive del
+//   administrador, a través del script del buzón (buzon/Code.gs) publicado desde su cuenta.
+// - El administrador visa y, con un botón, sube lo visado al SharePoint de proyectos
+//   (necesita además su cuenta Microsoft de Kozan). Con cuenta Kozan se puede entrar
+//   solo a consultar lo que ya está en SharePoint.
+// Con GOOGLE_CLIENT_ID y CLIENT_ID vacíos la app corre en "modo demo": todo queda
+// en este equipo, sin contraseñas.
 export const CONFIG = {
+  // Google (obligatorio)
+  GOOGLE_CLIENT_ID: '',     // Id. de cliente OAuth (aplicación web) en Google Cloud
+  BUZON_URL: '',            // URL …/exec de la aplicación web de Apps Script (buzon/Code.gs)
+  // SharePoint de proyectos (para subir lo visado)
   CLIENT_ID: '',            // Id. de aplicación (cliente) del registro en Entra ID
   TENANT_ID: '',            // Id. de directorio (inquilino) de Atacama Kozan
   SITE_HOST: '',            // p. ej. 'atacamakozan.sharepoint.com'
-  SITE_PATH: '/sites/ObrasDRF', // sitio de SharePoint donde viven las listas
-  LIST_PREFIX: 'DRF_',      // prefijo de las listas creadas por la app
-  FILES_FOLDER: 'ObrasDRF', // carpeta de fotos, firmas y adjuntos en Documentos del sitio
-  GOOGLE_CLIENT_ID: '',     // Id. de cliente OAuth (aplicación web) del proyecto en Google Cloud
-  BUZON_CORREO: '',         // cuenta Google del proyecto que recibe los envíos de terreno
-  VERSION: '0.4.1',
+  SITE_PATH: '/sites/Proyectos', // sitio de SharePoint de proyectos
+  BIBLIOTECA: '',           // biblioteca de documentos; vacío = la principal (Documentos)
+  CARPETA: 'OBRAS FLUVIALES/07_PROTOCOLOS/03_REGISTROS_APP', // carpeta de las Obras Fluviales dentro de la biblioteca
+  LIST_PREFIX: 'DRF_',      // prefijo de las listas (base del panel y de Power BI)
+  VERSION: '0.5.0',
 };
 
 export const PROYECTO = {
@@ -24,5 +29,5 @@ export const PROYECTO = {
 };
 
 export const HAY_KOZAN = !!CONFIG.CLIENT_ID;
-export const HAY_GOOGLE = !!(CONFIG.GOOGLE_CLIENT_ID && CONFIG.BUZON_CORREO);
-export const DEMO = !HAY_KOZAN && !HAY_GOOGLE;
+export const HAY_GOOGLE = !!(CONFIG.GOOGLE_CLIENT_ID && CONFIG.BUZON_URL);
+export const DEMO = !HAY_GOOGLE;

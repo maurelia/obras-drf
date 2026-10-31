@@ -221,6 +221,18 @@ table.kvt, table.dt { width: 100%; border-collapse: collapse; }
   tr, .docsec h4 { break-inside: avoid; }
 }
 
+/* PDF para SharePoint: mismo documento, siempre en claro y a ancho A4.
+   html2pdf clona solo .pdfdoc, por eso los colores van ahí y no en .pdfbox. */
+.pdfbox { position: fixed; left: -10000px; top: 0; z-index: -1; }
+.pdfdoc { width: 690px; /* A4 menos márgenes de 10 mm */ --card: #fff; --bg: #eee; --label: #000; --label2: #333; --label3: #666; --sep: #999; --tint: #000;
+  background: #fff; color: #000; font-size: 13px; color-scheme: light; }
+.pdfdoc .doc { padding: 0; border-radius: 0; font-size: 12px; background: #fff; color: #000; }
+.pdfdoc .tablewrap { overflow: visible; }
+.pdfdoc .badge { background: none !important; border: 1px solid currentColor; color: #000; }
+.pdfdoc .docphotos { grid-template-columns: repeat(2, 1fr); }
+.pdfdoc .sigimg { object-fit: fill; width: auto; height: 56px; max-width: none; }
+.pdfdoc .docphotos img { height: auto; }
+
 .skel { height: 64px; border-radius: var(--r); background: linear-gradient(90deg, var(--card), var(--sep), var(--card)); background-size: 200% 100%; animation: sk 1.2s infinite; margin-bottom: 8px; }
 @keyframes sk { to { background-position: -200% 0; } }
 

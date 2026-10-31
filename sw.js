@@ -1,10 +1,10 @@
 // Service worker: deja la app disponible sin señal. Los datos viajan por
-// Graph y la API de Drive (nunca se cachean aquí); los cambios offline viven en IndexedDB.
-const CACHE = 'obrasdrf-v7';
+// Graph y el buzón de Apps Script (nunca se cachean aquí); los cambios offline viven en IndexedDB.
+const CACHE = 'obrasdrf-v8';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.json', 'icon.svg', 'vendor/msal-browser.min.js',
-  'js/app.js', 'js/auth.js', 'js/graph.js', 'js/gdrive.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
-  'js/forms.js', 'js/engine.js', 'js/avance.js',
+  'js/app.js', 'js/auth.js', 'js/graph.js', 'js/buzon.js', 'js/publicar.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
+  'js/forms.js', 'js/engine.js', 'js/avance.js', 'vendor/html2pdf.bundle.min.js',
 ];
 
 self.addEventListener('install', (e) => {
