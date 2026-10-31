@@ -13,12 +13,13 @@ const MAMPOSTERIA = 'Canal excavado en terreno con revestimiento de mampostería
 export const UBICACION = 'Depósito de relaves filtrados (DRF)';
 
 // Fase de cada obra (bases técnicas 3503-BT-001_C y plano de obras fluviales tempranas):
-// tempranas = CC, RD, DE y CE, más los canales secundarios, que se construyen en esta etapa;
-// RD-1, DE y CC-1 tendrán además su fase definitiva sobre la misma obra (PAS 155 y 157).
+// tempranas = RD, DE y CE, más los canales secundarios, que se construyen en esta etapa;
+// RD-1 y DE tendrán además su fase definitiva sobre la misma obra (PAS 155 y 157).
+// El canal de contorno CC-1 es definitivo y ya está construido.
 const AMBAS = 'Temprana y definitiva';
 export const FASES_OBRA = ['Temprana', 'Definitiva', AMBAS];
 const FASE_OBRA = { 'CR-1': 'Definitiva', 'CR-2': 'Definitiva', 'CR-3': 'Definitiva', VE: 'Definitiva', 'CD-1': 'Definitiva',
-  'CC-1': AMBAS, 'RD-1': AMBAS, DE: AMBAS, 'CS-1': 'Temprana', 'CS-2': 'Temprana', CE: 'Temprana' };
+  'CC-1': 'Definitiva', 'RD-1': AMBAS, DE: AMBAS, 'CS-1': 'Temprana', 'CS-2': 'Temprana', CE: 'Temprana' };
 
 export const OBRAS_PROYECTO = [
   { Codigo: 'CR-1', Title: 'Canal de restitución 1', ...CANAL_RESTITUCION,
@@ -73,6 +74,12 @@ const PLAN = {
   'CS-2': { Peso: 5, etapas: SECUNDARIOS },
 };
 
+// Pesos en obras definitivas (%), preliminares: costo directo estimado en
+// 01_DOCUMENTOS\Pesos_Obras_Definitivas_Rev0.xlsx (no hay presupuesto oficial).
+export const PESO_DEF = { 'CR-1': 32, 'CC-1': 29, 'CR-2': 14, 'CR-3': 9, 'RD-1': 9, 'CD-1': 3, VE: 2, DE: 2 };
+// Etapas definitivas conocidas: CC-1 ya construido.
+const PLAN_DEF = { 'CC-1': { Estado: 'Terminada', etapas: [['Canal de contorno construido', 100, 100]] } };
+
 export const ETAPAS_PROYECTO = [];
 for (const o of OBRAS_PROYECTO) {
   const plan = PLAN[o.Codigo];
@@ -81,6 +88,16 @@ for (const o of OBRAS_PROYECTO) {
   if (plan.Estado) o.Estado = plan.Estado;
   plan.etapas.forEach(([Title, Peso, AvanceBase = 0], i) => ETAPAS_PROYECTO.push({
     Uid: `${o.Uid}-e${i + 1}`, ObraUid: o.Uid, Item: String(i + 1), Title, Peso, AvanceBase, Fase: 'Temprana',
+    Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
+  }));
+}
+for (const o of OBRAS_PROYECTO) {
+  if (PESO_DEF[o.Codigo]) o.PesoDef = PESO_DEF[o.Codigo];
+  const plan = PLAN_DEF[o.Codigo];
+  if (!plan) continue;
+  if (plan.Estado) o.Estado = plan.Estado;
+  plan.etapas.forEach(([Title, Peso, AvanceBase = 0], i) => ETAPAS_PROYECTO.push({
+    Uid: `${o.Uid}-d${i + 1}`, ObraUid: o.Uid, Item: `D${i + 1}`, Title, Peso, AvanceBase, Fase: 'Definitiva',
     Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
   }));
 }

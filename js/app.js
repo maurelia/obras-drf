@@ -399,8 +399,8 @@ async function cargarCatalogo() {
   for (const o of OBRAS_PROYECTO) {
     const ex = porCodigo[o.Codigo];
     if (!ex) nuevasObras.push(o);
-    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase)) {
-      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase });
+    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase) || (ex.PesoDef == null && o.PesoDef)) {
+      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase, PesoDef: ex.PesoDef ?? o.PesoDef });
     }
   }
   const etapasHay = remoto ? remoto.partidas : await store.all('partidas');

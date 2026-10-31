@@ -18,7 +18,7 @@ export const CONFIG = {
   BIBLIOTECA: '',           // biblioteca de documentos; vacío = la principal (Documentos)
   CARPETA: 'OBRAS FLUVIALES/07_PROTOCOLOS/03_REGISTROS_APP', // carpeta de las Obras Fluviales dentro de la biblioteca
   LIST_PREFIX: 'DRF_',      // prefijo de las listas (base del panel y de Power BI)
-  VERSION: '0.6.0',
+  VERSION: '0.6.1',
 };
 
 export const PROYECTO = {
