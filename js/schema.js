@@ -22,16 +22,17 @@ export const LISTS = {
     title: 'Obras',
     columns: [
       text('Uid', { indexed: true }), text('Codigo'), text('Mandante'), text('Ubicacion'),
-      choice('Estado', ESTADOS_OBRA), date('FechaInicio'), date('FechaTermino'), num('Peso'),
+      choice('Estado', ESTADOS_OBRA), date('FechaInicio'), date('FechaTermino'), num('Peso'), num('PesoDef'), choice('Fase', ['Temprana', 'Definitiva', 'Temprana y definitiva']),
       num('Lat'), num('Lon'), note('Notas'),
       note('Descripcion'), note('Materialidad'), note('Geometria'),
     ],
   },
-  // Etapas de cada obra. Peso y AvanceBase en %; el avance suma lo informado en los protocolos diarios.
+  // Obras: Peso = peso en obras tempranas, PesoDef = en obras definitivas (%).
+  // Etapas de cada obra, con su fase (Temprana / Definitiva). Peso y AvanceBase en %; el avance suma lo informado en los protocolos diarios.
   partidas: {
     title: 'Partidas',
     columns: [
-      text('Uid', { indexed: true }), text('ObraUid', { indexed: true }), text('Item'), num('Peso'),
+      text('Uid', { indexed: true }), text('ObraUid', { indexed: true }), text('Item'), choice('Fase', ['Temprana', 'Definitiva']), num('Peso'),
       num('AvanceBase'), text('Unidad'), num('CantContrato'), choice('Estado', ESTADOS_PARTIDA),
     ],
   },

@@ -12,6 +12,14 @@ const MAMPOSTERIA = 'Canal excavado en terreno con revestimiento de mampostería
 
 export const UBICACION = 'Depósito de relaves filtrados (DRF)';
 
+// Fase de cada obra (bases técnicas 3503-BT-001_C y plano de obras fluviales tempranas):
+// tempranas = CC, RD, DE y CE, más los canales secundarios, que se construyen en esta etapa;
+// RD-1, DE y CC-1 tendrán además su fase definitiva sobre la misma obra (PAS 155 y 157).
+const AMBAS = 'Temprana y definitiva';
+export const FASES_OBRA = ['Temprana', 'Definitiva', AMBAS];
+const FASE_OBRA = { 'CR-1': 'Definitiva', 'CR-2': 'Definitiva', 'CR-3': 'Definitiva', VE: 'Definitiva', 'CD-1': 'Definitiva',
+  'CC-1': AMBAS, 'RD-1': AMBAS, DE: AMBAS, 'CS-1': 'Temprana', 'CS-2': 'Temprana', CE: 'Temprana' };
+
 export const OBRAS_PROYECTO = [
   { Codigo: 'CR-1', Title: 'Canal de restitución 1', ...CANAL_RESTITUCION,
     Geometria: 'Trapecial\nB: 6 m\nH: 1,5 m\nZ: 1\nL: 1.120 m\ni: -14,4 %' },
@@ -46,9 +54,9 @@ export const OBRAS_PROYECTO = [
     Geometria: 'Cuenco rectangular\nLi: 8 m · Ai: 6 m\nLe: 24 m · Ae: 18 m\nh: 2 m\nH/V: 3/1' },
   // Sin descripción en la planilla de origen.
   { Codigo: 'CE', Title: 'Canal de encauzamiento' },
-].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada', Peso: 0 }));
+].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada', Peso: 0, Fase: FASE_OBRA[o.Codigo] }));
 
-// Pesos y etapas de 07.SEGUIMIENTO\Control_Avance_Diario_Protocolos_LJ_Obras_Fluviales_RevB.xlsx
+// Pesos (en obras tempranas) y etapas de 07.SEGUIMIENTO\Control_Avance_Diario_Protocolos_LJ_Obras_Fluviales_RevB.xlsx
 // (hojas Configuracion y Registro_Diario). Pesos en %; AvanceBase = avance acumulado
 // al último registro de esa planilla (FECHA_BASE); desde ahí suman los protocolos diarios. "Canales Secundarios" (10 %) se reparte entre CS-1 y CS-2.
 export const FECHA_BASE = '2026-09-09';
@@ -72,7 +80,7 @@ for (const o of OBRAS_PROYECTO) {
   o.Peso = plan.Peso;
   if (plan.Estado) o.Estado = plan.Estado;
   plan.etapas.forEach(([Title, Peso, AvanceBase = 0], i) => ETAPAS_PROYECTO.push({
-    Uid: `${o.Uid}-e${i + 1}`, ObraUid: o.Uid, Item: String(i + 1), Title, Peso, AvanceBase,
+    Uid: `${o.Uid}-e${i + 1}`, ObraUid: o.Uid, Item: String(i + 1), Title, Peso, AvanceBase, Fase: 'Temprana',
     Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
   }));
 }

@@ -7,10 +7,11 @@ import * as graph from './graph.js';
 import * as store from './store.js';
 import * as publicar from './publicar.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, uid, nextCode } from './schema.js';
-import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE } from './catalogo.js';
+import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FASES_OBRA } from './catalogo.js';
 import { FORMS, PUNTOS, evalCota, puede } from './forms.js';
 import { initialData, renderForm, renderDoc, hydrate, fileRefs } from './engine.js';
-import { filasAvance, avanceEtapas, avanceObra, avanceGlobal, serieGlobal, horasRCM, lunes } from './avance.js';
+import { filasAvance, avanceEtapas, avanceObra, avanceGlobal, serieGlobal, horasRCM, lunes,
+  FASES, FASE_PLURAL, faseDe, pesoObra, fasesDeObra } from './avance.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -305,6 +306,7 @@ async function datos() {
   // El avance cuenta solo lo visado y subido a SharePoint.
   const filas = filasAvance(registros.filter(enSP));
   const porEtapa = avanceEtapas(partidas, filas);
+  obrasCache = obras;
   return { obras, partidas, registros, filas, porEtapa };
 }
 
@@ -326,7 +328,9 @@ const pendIcon = (r) => (!DEMO && modo() === 'google' && r.Estado === 'Enviado' 
 const OBRA_FIELDS = [
   { name: 'Title', label: 'Nombre', required: true, ph: 'Canal de restitución 1' },
   { name: 'Codigo', label: 'Código', required: true, ph: 'CR-1' },
-  { name: 'Peso', label: 'Peso en el proyecto (%)', type: 'number' },
+  { name: 'Fase', label: 'Fase', type: 'select', options: FASES_OBRA },
+  { name: 'Peso', label: 'Peso en obras tempranas (%)', type: 'number' },
+  { name: 'PesoDef', label: 'Peso en obras definitivas (%)', type: 'number' },
   { name: 'Mandante', label: 'Mandante' },
   { name: 'Ubicacion', label: 'Ubicación' },
   { name: 'Estado', label: 'Estado', type: 'select', options: ESTADOS_OBRA },
@@ -343,7 +347,8 @@ const OBRA_FIELDS = [
 const PARTIDA_FIELDS = [
   { name: 'Item', label: 'Ítem', ph: '1' },
   { name: 'Title', label: 'Etapa', required: true, ph: 'Excavación' },
-  { name: 'Peso', label: 'Peso en la obra (%)', type: 'number' },
+  { name: 'Fase', label: 'Fase', type: 'select', options: FASES },
+  { name: 'Peso', label: 'Peso en la obra, dentro de su fase (%)', type: 'number' },
   { name: 'AvanceBase', label: 'Avance inicial (%)', type: 'number' },
   { name: 'Unidad', label: 'Unidad', ph: 'm³' },
   { name: 'CantContrato', label: 'Cantidad', type: 'number' },
@@ -365,11 +370,14 @@ function editObra(obra = {}) {
   });
 }
 
+let obrasCache = [];
+const faseObraUid = (u) => obrasCache.find((o) => o.Uid === u)?.Fase;
+
 function editPartida(obraUid, p = {}) {
   openForm({
     title: p.Uid ? 'Editar etapa' : 'Nueva etapa',
     fields: PARTIDA_FIELDS,
-    values: { Estado: 'Pendiente', ...p },
+    values: { Estado: 'Pendiente', Fase: p.Fase || (faseObraUid(obraUid) === 'Definitiva' ? 'Definitiva' : 'Temprana'), ...p },
     onSave: async (d) => {
       await persistir('partidas', [{ ...sinPrivados(p), ...d, ObraUid: obraUid, Uid: p.Uid || uid() }]);
       route();
@@ -391,9 +399,14 @@ async function cargarCatalogo() {
   for (const o of OBRAS_PROYECTO) {
     const ex = porCodigo[o.Codigo];
     if (!ex) nuevasObras.push(o);
-    else if (ex.Peso == null && o.Peso) nuevasObras.push({ ...sinPrivados(ex), Peso: o.Peso });
+    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase)) {
+      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase });
+    }
   }
-  const partidas = new Set((remoto ? remoto.partidas : await store.all('partidas')).map((p) => p.Uid));
+  const etapasHay = remoto ? remoto.partidas : await store.all('partidas');
+  const partidas = new Set(etapasHay.map((p) => p.Uid));
+  // Etapas anteriores a la separación por fase: todas eran de obras tempranas.
+  const sinFase = etapasHay.filter((p) => !p.Fase).map((p) => ({ ...sinPrivados(p), Fase: 'Temprana' }));
   const obraUid = Object.fromEntries([...obras, ...nuevasObras].map((o) => [o.Codigo, o.Uid]));
   const nuevasEtapas = ETAPAS_PROYECTO.filter((p) => !partidas.has(p.Uid)).map((p) => {
     const cod = OBRAS_PROYECTO.find((o) => o.Uid === p.ObraUid).Codigo;
@@ -402,21 +415,29 @@ async function cargarCatalogo() {
   try {
     if (nuevasObras.length) await persistir('obras', nuevasObras);
     if (nuevasEtapas.length) await persistir('partidas', nuevasEtapas);
+    if (sinFase.length) await persistir('partidas', sinFase);
   } catch (e) { return toast(e.message, true); }
   const n = nuevasObras.filter((o) => !porCodigo[o.Codigo]).length;
-  toast(n || nuevasEtapas.length ? `${n} obras y ${nuevasEtapas.length} etapas agregadas` : 'Las obras del proyecto ya estaban cargadas');
+  const act = nuevasObras.length - n + sinFase.length;
+  toast(n || nuevasEtapas.length ? `${n} obras y ${nuevasEtapas.length} etapas agregadas`
+    : act ? `${act} obras y etapas actualizadas (fase temprana / definitiva)` : 'Las obras del proyecto ya estaban cargadas');
   route();
 }
 
 // ---------- Vistas ----------
 
-// Dashboard: avance global, curva acumulada, avance por obra y actividad de la semana.
+// Fase que muestra el panel (obras tempranas / definitivas); se recuerda en este equipo.
+let faseVista = (() => { try { return localStorage.getItem('faseVista') === 'Definitiva' ? 'Definitiva' : 'Temprana'; } catch { return 'Temprana'; } })();
+
+// Dashboard: avance por fase, curva acumulada, avance por obra y actividad de la semana.
 async function viewInicio(v) {
   setNav('Avance');
   const { obras, partidas, registros, filas, porEtapa } = await datos();
-  const glob = avanceGlobal(obras, partidas, porEtapa);
-  const serie = serieGlobal(obras, partidas, filas, FECHA_BASE);
-  const hace7 = avanceGlobal(obras, partidas, avanceEtapas(partidas, filas, addDays(today(), -7)));
+  const fase = faseVista, otra = fase === 'Temprana' ? 'Definitiva' : 'Temprana';
+  const glob = avanceGlobal(obras, partidas, porEtapa, fase);
+  const globOtra = avanceGlobal(obras, partidas, porEtapa, otra);
+  const serie = serieGlobal(obras, partidas, filas, FECHA_BASE, fase);
+  const hace7 = avanceGlobal(obras, partidas, avanceEtapas(partidas, filas, addDays(today(), -7)), fase);
   const sem = lunes(today());
   const enviados = registros.filter(enSP); // el panel muestra lo publicado en SharePoint
   const deSemana = enviados.filter((r) => r.Fecha >= sem);
@@ -429,7 +450,7 @@ async function viewInicio(v) {
   }
   const porRevisar = esAdmin() ? registros.filter((r) => r.Estado === 'Enviado').length : null;
   const nSubir = esAdmin() ? porSubir(registros).length : 0;
-  const conPeso = obras.filter((o) => Number(o.Peso) > 0).sort((a, b) => Number(b.Peso) - Number(a.Peso));
+  const conPeso = obras.filter((o) => pesoObra(o, fase) > 0).sort((a, b) => pesoObra(b, fase) - pesoObra(a, fase));
   const obrasMap = Object.fromEntries(obras.map((o) => [o.Uid, o]));
   const ultimos = visibles(registros).filter((r) => r.Estado !== 'Borrador').sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || '')).slice(0, 5);
 
@@ -442,12 +463,16 @@ async function viewInicio(v) {
   }
 
   const delta = glob != null && hace7 != null ? glob - hace7 : null;
+  const sinDef = fase === 'Definitiva' && glob == null;
   v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}
-    <div class="group hero"><div class="hl">Avance físico global</div>
+    <div class="seg" role="tablist" aria-label="Fase">${FASES.map((f) => `<button role="tab" aria-selected="${f === fase}" data-fase="${f}">${FASE_PLURAL[f]}</button>`).join('')}</div>
+    <div class="group hero"><div class="hl">Avance físico · ${FASE_PLURAL[fase].toLowerCase()}</div>
       <div class="hv">${fmtPct(glob)}</div>
-      <div class="bar big" role="img" aria-label="Avance global ${fmtPct(glob)}"><i style="width:${glob ?? 0}%"></i></div>
-      <div class="hs">${delta ? `${delta > 0 ? '+' : ''}${delta.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts en los últimos 7 días` : 'Sin variación en los últimos 7 días'}
-        · ponderado por peso de obra y etapa</div></div>
+      <div class="bar big" role="img" aria-label="Avance ${FASE_PLURAL[fase].toLowerCase()} ${fmtPct(glob)}"><i style="width:${glob ?? 0}%"></i></div>
+      <div class="hs">${sinDef ? 'Las obras definitivas aún no tienen pesos ni etapas: se asignan en cada obra (peso en obras definitivas) y en sus etapas (fase Definitiva).'
+        : `${delta ? `${delta > 0 ? '+' : ''}${delta.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts en los últimos 7 días` : 'Sin variación en los últimos 7 días'}
+        · ponderado por peso de obra y etapa dentro de la fase`}
+        · ${FASE_PLURAL[otra].toLowerCase()}: ${fmtPct(globOtra)}</div></div>
 
     <div class="tiles">
       ${tile('Protocolos diarios', deSemana.filter((r) => r.Tipo === 'PDA').length, 'esta semana')}
@@ -458,23 +483,26 @@ async function viewInicio(v) {
     ${nSubir ? `<div class="notice">${ic('up', 20)}<div><b>${nSubir} ${nSubir === 1 ? 'registro visado' : 'registros visados'} sin subir a SharePoint.</b> El panel se actualiza al subirlos.<br>
       <button class="btn" data-go="#/registros?f=subir" style="margin-top:8px">Revisar y subir</button></div></div>` : ''}
 
-    <h3>Avance acumulado</h3>
-    <div class="group chartbox">${chartSerie(serie)}</div>
-    <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance global</th></tr></thead>
+    <h3>Avance acumulado · ${FASE_PLURAL[fase].toLowerCase()}</h3>
+    <div class="group chartbox">${sinDef ? '<p class="foot" style="padding:16px">Sin obras definitivas con peso todavía.</p>' : chartSerie(serie)}</div>
+    <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${FASE_PLURAL[fase].toLowerCase()}</th></tr></thead>
       <tbody>${serie.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td></tr>`).join('')}</tbody></table></details>
-    <p class="foot">Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman los protocolos diarios visados y subidos a SharePoint.</p>
+    <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman` : 'Suman'} los protocolos diarios visados y subidos a SharePoint.</p>
 
-    <h3>Avance por obra</h3>
+    <h3>Avance por obra · ${FASE_PLURAL[fase].toLowerCase()}</h3>
     <div class="group">${conPeso.map((o) => {
-      const a = avanceObra(o.Uid, partidas, porEtapa) ?? 0;
+      const a = avanceObra(o.Uid, partidas, porEtapa, fase) ?? 0;
       return `<button class="row" data-go="#/obra/${esc(o.Uid)}"><div class="main"><div class="t">${esc(o.Title)}</div>
-        <div class="s">${esc(o.Codigo)} · peso ${fmtN(o.Peso)} %</div><div class="bar"><i style="width:${a}%"></i></div></div>
+        <div class="s">${esc(o.Codigo)} · peso ${fmtN(pesoObra(o, fase))} %</div><div class="bar"><i style="width:${a}%"></i></div></div>
         <span class="pct">${fmtPct(a, 0)}</span><span class="chev">${ic('chev', 18)}</span></button>`;
-    }).join('') || '<div class="row">Ninguna obra tiene peso asignado.</div>'}</div>
+    }).join('') || `<div class="row">Ninguna obra tiene peso en ${FASE_PLURAL[fase].toLowerCase()}.</div>`}</div>
 
     <h3>Últimos registros</h3>
     ${ultimos.length ? `<div class="group">${ultimos.map((r) => regRow(r, obrasMap)).join('')}</div>` : '<p class="foot">Todavía no hay registros.</p>'}`;
-  wireChart(v, serie);
+  if (!sinDef) wireChart(v, serie);
+  v.querySelectorAll('[data-fase]').forEach((b) => (b.onclick = () => {
+    faseVista = b.dataset.fase; try { localStorage.setItem('faseVista', faseVista); } catch {} route();
+  }));
 }
 
 const tile = (k, val, s, go) => `<${go ? `button data-go="${go}"` : 'div'} class="tile"><div class="tk">${esc(k)}</div><div class="tv">${esc(val)}</div><div class="ts">${esc(s)}</div></${go ? 'button' : 'div'}>`;
@@ -529,11 +557,17 @@ async function viewObras(v) {
     <div class="head"><h1>Obras</h1>${esAdmin() ? `<button class="round" id="addObra" aria-label="Nueva obra">${ic('plus')}</button>` : ''}</div>
     ${obras.length ? `<div class="group">${obras.map((o) => {
       const ps = partidas.filter((p) => p.ObraUid === o.Uid);
-      const av = avanceObra(o.Uid, partidas, porEtapa);
+      const fs = fasesDeObra(o.Uid, partidas);
+      // Con etapas en las dos fases, una barra por fase.
+      const barras = fs.map((f) => {
+        const av = avanceObra(o.Uid, partidas, porEtapa, f);
+        return `${fs.length > 1 ? `<div class="s">${f}: ${fmtPct(av, 0)}</div>` : ''}<div class="bar" role="img" aria-label="Avance ${f.toLowerCase()} ${Math.round(av)}%"><i style="width:${av}%"></i></div>`;
+      }).join('');
+      const pesos = [['temp.', o.Peso], ['def.', o.PesoDef]].filter(([, x]) => Number(x)).map(([k, x]) => `peso ${k} ${fmtN(x)} %`).join(' · ');
       return `<button class="row" data-go="#/obra/${esc(o.Uid)}">
         <div class="main"><div class="t">${esc(o.Title)}${pendIcon(o)}</div>
-        <div class="s">${esc(o.Codigo)}${Number(o.Peso) ? ` · peso ${fmtN(o.Peso)} %` : ''} · ${ps.length} ${ps.length === 1 ? 'etapa' : 'etapas'}</div>
-        ${av != null ? `<div class="bar" role="img" aria-label="Avance ${Math.round(av)}%"><i style="width:${av}%"></i></div>` : ''}</div>
+        <div class="s">${esc(o.Codigo)}${o.Fase ? ` · ${esc(o.Fase)}` : ''}${pesos ? ` · ${pesos}` : ''} · ${ps.length} ${ps.length === 1 ? 'etapa' : 'etapas'}</div>
+        ${barras}</div>
         ${estadoBadge(o.Estado)}<span class="chev">${ic('chev', 18)}</span></button>`;
     }).join('')}</div>` : `
       <div class="empty">${ic('obras', 48)}<b>Sin obras todavía</b>${esAdmin() ? `Carga las obras del proyecto o crea una nueva.<br><br>
@@ -556,17 +590,18 @@ async function viewObra(v, obraUid) {
   const etapasUid = new Set(partidas.map((p) => p.Uid));
   const regs = visibles(registros).filter((r) => r.ObraUid === obraUid || (r.Datos?.avances || []).some((a) => etapasUid.has(a.etapa)))
     .sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || ''));
-  const av = avanceObra(obraUid, todas, porEtapa);
+  const fs = fasesDeObra(obraUid, todas);
   const obrasMap = Object.fromEntries(obras.map((x) => [x.Uid, x]));
   const mapa = o.Lat && o.Lon ? `<a class="row" href="https://maps.google.com/?q=${o.Lat},${o.Lon}" target="_blank" rel="noopener">${ic('pin', 20)}<div class="main">Ver en el mapa</div><span class="chev">${ic('chev', 18)}</span></a>` : '';
 
   const tabs = { etapas: `Etapas (${partidas.length})`, registros: `Registros (${regs.length})` };
   let body = '';
   if (obraTab === 'etapas') {
-    body = partidas.length ? `<div class="group">${partidas.map((p) => `
+    // Etapas agrupadas por fase (con título solo si la obra tiene las dos).
+    body = partidas.length ? fs.map((f) => `${fs.length > 1 ? `<h3>${FASE_PLURAL[f]}</h3>` : ''}<div class="group">${partidas.filter((p) => faseDe(p) === f).map((p) => `
       <button class="row" data-partida="${esc(p.Uid)}" ${esAdmin() ? '' : 'disabled'}><div class="main"><div class="t">${esc(p.Item ? p.Item + '. ' : '')}${esc(p.Title)}${pendIcon(p)}</div>
-      <div class="s">${Number(p.Peso) ? `peso ${fmtN(p.Peso)} %` : 'sin peso'}${p.CantContrato ? ` · ${fmtN(p.CantContrato)} ${esc(p.Unidad)}` : ''}</div>
-      <div class="bar"><i style="width:${porEtapa[p.Uid]}%"></i></div></div><span class="pct">${fmtPct(porEtapa[p.Uid], 0)}</span></button>`).join('')}</div>`
+      <div class="s">${fs.length > 1 ? '' : `${f} · `}${Number(p.Peso) ? `peso ${fmtN(p.Peso)} %` : 'sin peso'}${p.CantContrato ? ` · ${fmtN(p.CantContrato)} ${esc(p.Unidad)}` : ''}</div>
+      <div class="bar"><i style="width:${porEtapa[p.Uid]}%"></i></div></div><span class="pct">${fmtPct(porEtapa[p.Uid], 0)}</span></button>`).join('')}</div>`).join('')
       : `<div class="empty">${esAdmin() ? 'Agrega las etapas de la obra con su peso para medir el avance.' : 'Esta obra no tiene etapas definidas.'}</div>`;
     if (esAdmin()) body += `<div style="margin-top:12px"><button class="btn sec" id="addPartida">${ic('plus', 20)} Agregar etapa</button></div>`;
   } else {
@@ -578,11 +613,14 @@ async function viewObra(v, obraUid) {
     <div class="group kv">
       <div class="row"><span class="k">Código</span><span class="v">${esc(o.Codigo)}</span></div>
       <div class="row"><span class="k">Estado</span><span class="v">${estadoBadge(o.Estado)}</span></div>
-      ${Number(o.Peso) ? `<div class="row"><span class="k">Peso en el proyecto</span><span class="v">${fmtN(o.Peso)} %</span></div>` : ''}
+      ${o.Fase ? `<div class="row"><span class="k">Fase</span><span class="v">${esc(o.Fase)}</span></div>` : ''}
+      ${Number(o.Peso) ? `<div class="row"><span class="k">Peso en obras tempranas</span><span class="v">${fmtN(o.Peso)} %</span></div>` : ''}
+      ${Number(o.PesoDef) ? `<div class="row"><span class="k">Peso en obras definitivas</span><span class="v">${fmtN(o.PesoDef)} %</span></div>` : ''}
       ${o.Mandante ? `<div class="row"><span class="k">Mandante</span><span class="v">${esc(o.Mandante)}</span></div>` : ''}
       ${o.Ubicacion ? `<div class="row"><span class="k">Ubicación</span><span class="v">${esc(o.Ubicacion)}</span></div>` : ''}
       ${o.FechaInicio || o.FechaTermino ? `<div class="row"><span class="k">Plazo</span><span class="v">${fmtDate(o.FechaInicio)} – ${fmtDate(o.FechaTermino)}</span></div>` : ''}
-      <div class="row"><span class="k">Avance</span><span class="v">${fmtPct(av)}<div class="bar"><i style="width:${av ?? 0}%"></i></div></span></div>
+      ${(fs.length ? fs : [null]).map((f) => { const av = avanceObra(obraUid, todas, porEtapa, f || undefined);
+        return `<div class="row"><span class="k">Avance${f && fs.length > 1 ? ` ${FASE_PLURAL[f].toLowerCase()}` : ''}</span><span class="v">${fmtPct(av)}<div class="bar"><i style="width:${av ?? 0}%"></i></div></span></div>`; }).join('')}
       ${mapa}
     </div>
     ${o.Descripcion || o.Materialidad || o.Geometria ? `<h3>Ficha técnica</h3><div class="group kv">

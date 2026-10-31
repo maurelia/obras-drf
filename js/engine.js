@@ -38,13 +38,15 @@ function optionsFor(c, ctx) {
     .sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || '')).map((r) => [r.Uid, `${r.Codigo} · ${fmtDate(r.Fecha)} · ${r.Autor}`]);
   return (c.options || []).map((o) => [o, o]);
 }
+// Las etapas de obras definitivas se marcan (RD-1, DE y CC-1 tienen etapas de las dos fases).
+const defi = (p) => (p.Fase === 'Definitiva' ? ' (definitiva)' : '');
 function etapaOptions(ctx, v) {
   const byObra = {};
   for (const p of ctx.partidas) (byObra[p.ObraUid] ||= []).push(p);
   return Object.entries(byObra).map(([ou, ps]) => {
     const o = ctx.obras.find((x) => x.Uid === ou);
     return o ? `<optgroup label="${esc(obraLabel(o))}">${ps.sort((a, b) => String(a.Item).localeCompare(String(b.Item), 'es', { numeric: true }))
-      .map((p) => `<option value="${esc(p.Uid)}"${p.Uid === v ? ' selected' : ''}>${esc(o.Codigo)} · ${esc(p.Title)}</option>`).join('')}</optgroup>` : '';
+      .map((p) => `<option value="${esc(p.Uid)}"${p.Uid === v ? ' selected' : ''}>${esc(o.Codigo)} · ${esc(p.Title)}${defi(p)}</option>`).join('')}</optgroup>` : '';
   }).join('');
 }
 export function labelOf(c, v, ctx) {
@@ -52,7 +54,7 @@ export function labelOf(c, v, ctx) {
   if (c.type === 'obra') { const o = ctx.obras.find((x) => x.Uid === v); return o ? obraLabel(o) : v; }
   if (c.type === 'etapa') {
     const p = ctx.partidas.find((x) => x.Uid === v); const o = p && ctx.obras.find((x) => x.Uid === p.ObraUid);
-    return p ? `${o?.Codigo || ''} · ${p.Title}` : v;
+    return p ? `${o?.Codigo || ''} · ${p.Title}${defi(p)}` : v;
   }
   if (c.type === 'registro') { const r = ctx.registros.find((x) => x.Uid === v); return r ? r.Codigo : v; }
   if (c.type === 'date') return fmtDate(v);
