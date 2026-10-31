@@ -170,6 +170,23 @@ function enviarPendientes(manual = false) {
   })());
 }
 
+// Aviso grande de pendientes al inicio: lo firmado sin señal queda en el teléfono hasta enviarse.
+// Con señal, un toque envía (y renueva el permiso de Google si venció, que dura 1 hora).
+function avisoPendientes(n) {
+  if (!n) return '';
+  const off = !navigator.onLine;
+  const que = `${n} ${n === 1 ? 'registro firmado' : 'registros firmados'}`;
+  const lo = n === 1 ? 'lo' : 'los';
+  return `<div class="pendbig${off ? ' off' : ''}" role="status">
+    <div class="pn">${n}</div>
+    <div class="pt"><b>${que} sin enviar</b>
+      ${off ? 'Están guardados en este teléfono. Cuando tengas señal, abre la app y toca <b>Enviar ahora</b>.'
+        : `Hay señal: toca <b>Enviar ahora</b> para ${esAdmin() ? `guardar${lo} en tu Google Drive` : `enviar${lo} al administrador`}. Si Google pide confirmar la cuenta, acepta.`}</div>
+    ${off ? `<div class="pf">${ic('info', 18)} Sin conexión</div>` : `<button class="btn" data-enviar-ya>${ic('send', 20)} Enviar ahora</button>`}
+  </div>`;
+}
+const wirePendientes = (v) => v.querySelectorAll('[data-enviar-ya]').forEach((b) => (b.onclick = () => { b.disabled = true; enviarPendientes(true); }));
+
 const sinPrivados = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith('_')));
 
 // Perfil, catálogo y estado de lo enviado, según el buzón.
@@ -239,8 +256,10 @@ async function trySync(manual = false) {
   await updatePill();
   if (!formActual) route(); // no redibujar encima de un formulario a medio llenar
 }
-addEventListener('online', () => trySync());
-addEventListener('offline', updatePill);
+// Al cambiar la señal se redibuja la pantalla (el aviso de pendientes cambia), salvo con un formulario abierto.
+const alCambiarSenal = () => { updatePill(); if (!formActual && SES) route(); };
+addEventListener('online', () => { alCambiarSenal(); trySync(); });
+addEventListener('offline', alCambiarSenal);
 
 function toast(msg, bad = false) {
   const t = document.createElement('div');
@@ -462,9 +481,10 @@ async function viewInicio(v) {
     return;
   }
 
+  const nPend = (await porEnviar()).length;
   const delta = glob != null && hace7 != null ? glob - hace7 : null;
   const sinDef = fase === 'Definitiva' && glob == null;
-  v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}
+  v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${avisoPendientes(nPend)}
     <div class="seg" role="tablist" aria-label="Fase">${FASES.map((f) => `<button role="tab" aria-selected="${f === fase}" data-fase="${f}">${FASE_PLURAL[f]}</button>`).join('')}</div>
     <div class="group hero"><div class="hl">Avance físico · ${FASE_PLURAL[fase].toLowerCase()}</div>
       <div class="hv">${fmtPct(glob)}</div>
@@ -500,6 +520,7 @@ async function viewInicio(v) {
     <h3>Últimos registros</h3>
     ${ultimos.length ? `<div class="group">${ultimos.map((r) => regRow(r, obrasMap)).join('')}</div>` : '<p class="foot">Todavía no hay registros.</p>'}`;
   if (!sinDef) wireChart(v, serie);
+  wirePendientes(v);
   v.querySelectorAll('[data-fase]').forEach((b) => (b.onclick = () => {
     faseVista = b.dataset.fase; try { localStorage.setItem('faseVista', faseVista); } catch {} route();
   }));
@@ -658,7 +679,7 @@ async function viewRegistros(v, filtro) {
   const vacio = { revisar: ['Nada por visar', DEMO ? '' : 'Usa ↻ para traer lo último que llegó a tu Google Drive.'], subir: ['Nada por subir', 'Todo lo visado ya está en SharePoint.'] }[f]
     || ['Sin registros', tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : 'Aquí aparecerán los registros visados y subidos a SharePoint.'];
   v.innerHTML = `<div class="head"><h1>Registros</h1><span class="hbtns">${!DEMO && !soloConsulta() ? `<button class="round sec" id="actualizar" aria-label="Actualizar desde Google Drive">${ic('sync')}</button>` : ''}${tipos.length ? `<button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button>` : ''}</span></div>
-    ${nPend ? `<div class="notice">${ic('send', 20)}<div><b>${nPend} ${nPend === 1 ? 'registro' : 'registros'} por enviar.</b> ${esAdmin() ? 'Se guardan en tu Google Drive' : 'Se envían al administrador'} cuando hay señal.<br><button class="btn" id="enviarYa" style="margin-top:8px">Enviar ahora</button></div></div>` : ''}
+    ${avisoPendientes(nPend)}
     <div class="seg" role="tablist">${Object.entries(segs).map(([k, l]) => `<button role="tab" aria-selected="${k === f}" data-go="#/registros?f=${k}">${l}</button>`).join('')}</div>
     ${f === 'subir' && rows.length ? `<div class="notice">${ic('up', 20)}<div>Se suben a <b>${esc(DEMO ? 'SharePoint (simulado en modo demo)' : CONFIG.SITE_PATH + ' › ' + CONFIG.CARPETA)}</b>: PDF del protocolo, fotos y firmas por código, y la fila en la lista que alimenta el panel.<br>
       <button class="btn" id="subirTodo" style="margin-top:8px">${ic('up', 20)} Subir ${rows.length} a SharePoint</button></div></div>` : ''}
@@ -666,7 +687,7 @@ async function viewRegistros(v, filtro) {
       : `<div class="empty">${ic('prot', 48)}<b>${vacio[0]}</b>${vacio[1]}</div>`}`;
   $('#nuevo') && ($('#nuevo').onclick = () => elegirTipo(tipos));
   $('#actualizar') && ($('#actualizar').onclick = () => trySync(true));
-  $('#enviarYa') && ($('#enviarYa').onclick = () => enviarPendientes(true));
+  wirePendientes(v);
   $('#subirTodo') && ($('#subirTodo').onclick = () => subirSharePoint(rows));
 }
 

@@ -129,6 +129,14 @@ dialog::backdrop { background: rgba(0,0,0,.35); }
 .log { font: .8125rem ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; background: var(--card); border-radius: var(--r); padding: 12px; margin-top: 10px; }
 
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 40; max-width: 560px; margin: auto; box-shadow: var(--shadow); }
+.pendbig { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center; margin: 12px 0 16px; padding: 16px;
+  border-radius: var(--r); background: color-mix(in srgb, var(--warn) 14%, var(--card)); border: 2px solid var(--warn); }
+.pendbig .pn { grid-row: span 2; font-size: 2.75rem; font-weight: 700; line-height: 1; color: var(--warn); font-variant-numeric: tabular-nums; min-width: 1.2em; text-align: center; }
+.pendbig .pt { font-size: .9375rem; line-height: 1.35; } .pendbig .pt b:first-child { display: block; font-size: 1.0625rem; margin-bottom: 2px; }
+.pendbig .btn { grid-column: 1 / -1; width: 100%; min-height: 48px; font-size: 1.0625rem; margin-top: 6px; }
+.pendbig .pf { color: var(--label2); font-size: .875rem; display: flex; align-items: center; gap: 6px; }
+.pendbig.off { background: color-mix(in srgb, var(--label2) 10%, var(--card)); border-color: var(--sep); } .pendbig.off .pn { color: var(--label2); }
+@media print { .pendbig { display: none; } }
 .notice.bad { background: color-mix(in srgb, var(--bad) 12%, var(--card)); } .notice.bad svg { color: var(--bad); }
 .row:disabled { cursor: default; color: inherit; opacity: 1; } .row:disabled:active { background: none; }
 .ricon { color: var(--tint); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--tint-soft); flex: none; }
