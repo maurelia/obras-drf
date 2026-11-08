@@ -22,6 +22,18 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.0.0 (08-11-2026)
+
+Primera versión final, en producción con un solo usuario: el administrador (dueño del buzón).
+
+- Google y buzón conectados (`GOOGLE_CLIENT_ID`, `BUZON_URL`); buzón en su versión de implementación 2.
+- 8 formatos (PDA, PCT, RCM, PTT, TRT, PRV, PHU, PND), visado con código, avance por obras tempranas y definitivas.
+- Política de privacidad (v2) y términos de uso (v1), con autorización al entrar y constancia en el buzón;
+  permiso de ubicación en fotos; Ajustes › Mis datos e Inventario de datos (CSV).
+- Se actualiza sola al publicar una versión nueva.
+- Pendiente para versiones siguientes: SharePoint (`CLIENT_ID`, `TENANT_ID`, `SITE_HOST` de Informática;
+  hasta entonces «Subir a SharePoint» no funciona), alta de usuarios de terreno, instructivo IN-OF-01 Rev. E.
+
 ```
 config.js       ← GOOGLE_CLIENT_ID, BUZON_URL, y SharePoint: CLIENT_ID, TENANT_ID, SITE_HOST, SITE_PATH, BIBLIOTECA, CARPETA
 buzon/Code.gs   ← script del buzón (se pega en script.google.com con la cuenta del administrador)
