@@ -79,6 +79,10 @@ export async function login() {
 
 export const sesion = (interactivo = false) => call('sesion', {}, interactivo);
 
+// Deja en el buzón la constancia de que se aceptaron (o retiraron) privacidad y términos.
+export const consentir = async (c, interactivo = false) =>
+  (await call('consentir', { privacidad: c.privacidad, terminos: c.terminos, fecha: c.fecha, retiro: !!c.retiro }, interactivo)).consentimiento;
+
 // ---------- Registros ----------
 
 const b64 = (blob) => new Promise((ok, fail) => {
@@ -90,14 +94,15 @@ const b64 = (blob) => new Promise((ok, fail) => {
 const deB64 = (s, type) => { const bin = atob(s); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type }); };
 
 // Manda un registro firmado con sus fotos, firmas y adjuntos.
-export async function enviar(reg, refs, getFile, interactivo = true) {
+// Lleva la constancia de aceptación de términos, que el buzón exige para recibir.
+export async function enviar(reg, refs, getFile, interactivo = true, consentimiento = null) {
   const registro = Object.fromEntries(Object.entries(reg).filter(([k]) => !k.startsWith('_')));
   const archivos = [];
   for (const r of refs) {
     const f = await getFile(r.fid);
     if (f?.blob) archivos.push({ fid: r.fid, name: f.name || r.name, type: f.blob.type || f.type, data: await b64(f.blob) });
   }
-  return (await call('enviar', { proyecto: PROYECTO.codigo, registro, archivos }, interactivo)).registro;
+  return (await call('enviar', { proyecto: PROYECTO.codigo, registro, archivos, consentimiento }, interactivo)).registro;
 }
 
 export async function archivos(uid) {

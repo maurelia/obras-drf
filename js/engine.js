@@ -4,6 +4,7 @@ import { FORMS, PUNTOS, evalCota } from './forms.js';
 import { PROYECTO } from '../config.js';
 import * as store from './store.js';
 import { uid } from './schema.js';
+import { pedirGPS } from './consent.js';
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Fecha local (no UTC: en Chile después de las 21:00 UTC ya es el día siguiente).
@@ -187,10 +188,12 @@ async function comprimir(file) {
   cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
   return new Promise((ok) => cv.toBlob((b) => ok(b || file), 'image/jpeg', 0.82));
 }
-const ubicacion = () => new Promise((ok) => {
-  if (!navigator.geolocation) return ok(null);
-  navigator.geolocation.getCurrentPosition((p) => ok(p.coords), () => ok(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
-});
+// Ubicación de las fotos: solo si el usuario la autorizó (se le pregunta la primera vez).
+async function ubicacion() {
+  if (!navigator.geolocation || !(await pedirGPS())) return null;
+  return new Promise((ok) => navigator.geolocation.getCurrentPosition((p) => ok(p.coords), () => ok(null),
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }));
+}
 
 export async function hydrate(el) {
   for (const img of el.querySelectorAll('img[data-fid]')) {

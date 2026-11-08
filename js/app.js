@@ -1,11 +1,12 @@
 // Interfaz: navegación por hash (#/inicio, #/obras, #/obra/<uid>, #/registros,
-// #/nuevo/<tipo>, #/reg/<uid>, #/ajustes).
+// #/nuevo/<tipo>, #/reg/<uid>, #/ajustes, #/misdatos, #/inventario).
 import { CONFIG, DEMO, HAY_KOZAN, PROYECTO } from '../config.js';
 import * as auth from './auth.js';
 import * as buzon from './buzon.js';
 import * as graph from './graph.js';
 import * as store from './store.js';
 import * as publicar from './publicar.js';
+import * as consent from './consent.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, uid, nextCode } from './schema.js';
 import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FASES_OBRA } from './catalogo.js';
 import { FORMS, PUNTOS, evalCota, puede } from './forms.js';
@@ -152,8 +153,9 @@ function enviarPendientes(manual = false) {
   return (enviando ||= (async () => {
     let n = 0;
     try {
+      await registrarConsent(manual);
       for (const r of await porEnviar()) {
-        let rec = await buzon.enviar(r, fileRefs(r.Datos), store.getFile, manual);
+        let rec = await buzon.enviar(r, fileRefs(r.Datos), store.getFile, manual, consent.aceptado(SES.correo));
         if (esAdmin()) rec = await buzon.estado(rec.Uid, { Estado: 'Aprobado', Revisor: SES.nombre });
         await store.save('registros', { ...rec, _drive: rec.Carpeta || 'ok' });
         if (esAdmin()) await trasVisar(rec);
@@ -193,6 +195,7 @@ const sinPrivados = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => 
 async function aplicarSesion(s) {
   const p = { ...ls.get('perfilGoogle'), correo: s.usuario.correo, rol: s.usuario.rol, ...(s.usuario.nombre ? { nombre: s.usuario.nombre } : {}) };
   ls.set('perfilGoogle', p);
+  consent.adoptar(s.usuario.correo, s.consentimiento);
   SES = null; await cargarSesion();
   if (s.obras?.length) await store.reemplazar('obras', s.obras);
   if (s.partidas?.length) await store.reemplazar('partidas', s.partidas);
@@ -211,6 +214,7 @@ async function aplicarSesion(s) {
 async function bajarDatos(interactivo = false) {
   const d = await buzon.datos(interactivo);
   await store.reemplazar('usuarios', d.usuarios);
+  await store.meta('consentimientos', d.consentimientos || []);
   if (d.obras.length) await store.reemplazar('obras', d.obras);
   if (d.partidas.length) await store.reemplazar('partidas', d.partidas);
   await store.reemplazar('registros', d.registros.map((r) => ({ ...r, _drive: r.Carpeta || 'ok' })),
@@ -236,6 +240,7 @@ async function trySync(manual = false) {
   if (DEMO || !navigator.onLine) return updatePill();
   if (modo() === 'google') {
     if (!manual && !buzon.hayToken()) return updatePill();
+    await registrarConsent(manual);
     await enviarPendientes(manual);
     try {
       if (esAdmin()) await bajarDatos(manual); else await aplicarSesion(await buzon.sesion(manual));
@@ -961,6 +966,7 @@ async function ajustesTerreno(v) {
       <button class="btn sec" id="syncNow">${ic('sync', 20)} Actualizar estado</button>
       <button class="btn danger" id="logout" ${pend ? 'disabled' : ''}>Cerrar sesión</button></div>
     <p class="foot">${pend ? 'Envía los pendientes antes de cerrar sesión. ' : ''}Lo que firmas queda guardado en el Google Drive del administrador del proyecto; tu cuenta solo se usa para identificarte.</p>
+    ${bloquePrivacidad()}
     <h3>Acerca de</h3>
     <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>
     <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
@@ -978,6 +984,7 @@ async function ajustesConsulta(v) {
     <h3>SharePoint</h3>
     <div class="group kv">${filaKV('Sitio', DEMO ? 'Modo demo' : esc(CONFIG.SITE_HOST + CONFIG.SITE_PATH))}${filaKV('Última sincronización', fechaHora(await store.meta('lastSync')))}</div>
     ${DEMO ? '' : `<div style="margin-top:10px"><button class="btn" id="syncNow">${ic('sync', 20)} Sincronizar ahora</button></div>`}
+    ${bloquePrivacidad()}
     <h3>Acerca de</h3>
     <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>
     <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
@@ -1020,6 +1027,7 @@ async function viewAjustes(v) {
     <h3>Proyecto</h3>
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
+    ${bloquePrivacidad()}
     <h3>Acerca de</h3>
     <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>
     <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
@@ -1105,6 +1113,216 @@ async function viewSinAcceso(v) {
   $('#logout').onclick = cerrarSesion;
 }
 
+// ---------- Privacidad: autorización, mis datos e inventario ----------
+
+const linkRow = (go, t, s) => `<button class="row" data-go="${go}"><div class="main"><div class="t">${esc(t)}</div>${s ? `<div class="s">${esc(s)}</div>` : ''}</div><span class="chev">${ic('chev', 18)}</span></button>`;
+const mb = (b) => `${(b / 1048576).toLocaleString('es-CL', { maximumFractionDigits: 1 })} MB`;
+const sumar = (a, k) => { for (const x in k) a[x] = (a[x] || 0) + k[x]; return a; };
+const CLAVES_LOCALES = ['gtok', 'gCorreo', 'perfilGoogle', 'modo', 'demoSesion', 'demoRol', 'faseVista', 'permGPS'];
+
+function bloquePrivacidad() {
+  return `<h3>Privacidad</h3><div class="group">${linkRow('#/misdatos', 'Mis datos', 'Qué guarda la app de ti, permisos y autorización')}
+    ${esAdmin() ? linkRow('#/inventario', 'Inventario de datos', 'Lo que se recopila de cada persona, exportable a CSV') : ''}</div>`;
+}
+
+// Pregunta de confirmación dentro de la app (sin diálogos del navegador).
+function confirmar(titulo, texto, accion) {
+  return new Promise((ok) => {
+    const dlg = $('#sheet');
+    dlg.innerHTML = `<div class="sh-head"><button type="button" class="navbtn" data-x>Cancelar</button><h2 id="shTitle">${esc(titulo)}</h2><span class="navbtn"></span></div>
+      <div class="sh-body"><p>${esc(texto)}</p><button type="button" class="btn danger" data-ok>${esc(accion)}</button></div>`;
+    let hecho = false;
+    const fin = (val) => { if (hecho) return; hecho = true; dlg.close(); ok(val); };
+    $('[data-x]', dlg).onclick = () => fin(false);
+    $('[data-ok]', dlg).onclick = () => fin(true);
+    dlg.oncancel = () => fin(false);
+    dlg.showModal();
+  });
+}
+
+// Deja en el buzón la constancia pendiente (aceptación o retiro). Sin buzón (demo,
+// consulta con cuenta Kozan) la constancia queda solo en este equipo.
+async function registrarConsent(interactivo = false) {
+  if (!SES || DEMO || modo() !== 'google' || !navigator.onLine) return;
+  const c = consent.aceptado(SES.correo);
+  if (!c?.pendiente || (!interactivo && !buzon.hayToken())) return;
+  try { await buzon.consentir(c, interactivo); consent.registrado(SES.correo); }
+  catch (e) { console.warn('Constancia de autorización pendiente:', e.message); }
+}
+
+// Primera entrada (o cambio de versión): aceptar privacidad y términos para seguir.
+function viewAutorizacion(v) {
+  setNav('');
+  $('#tabs').innerHTML = '';
+  const prev = consent.aceptado(SES.correo);
+  const V = consent.VIGENTE;
+  const actualiza = prev && !prev.retiro;
+  const terreno = modo() === 'google';
+  v.innerHTML = `<div class="head"><h1>${actualiza ? 'Términos actualizados' : 'Antes de empezar'}</h1></div>
+    <p class="foot">${actualiza ? 'Cambiaron la política de privacidad o los términos de uso. Para seguir usando la app, revísalos y acéptalos.'
+      : `Hola, ${esc(SES.nombre)}. Para usar Obras DRF necesitamos tu autorización.`}</p>
+    <h3>Qué recopila la app</h3>
+    <div class="group kv">${filaKV('Tu cuenta', 'Nombre y correo, para identificarte')}
+      ${terreno ? filaKV('Tus registros', 'Formularios, fotos, firma y adjuntos que envías') + filaKV('Ubicación', 'Solo en las fotos, si lo permites (se pregunta aparte)')
+        : filaKV('Consulta', 'Solo ves lo publicado en SharePoint')}</div>
+    <p class="foot">${terreno ? `Se guarda en el Google Drive del administrador del proyecto y, una vez visado, en el SharePoint de ${esc(PROYECTO.empresa)}. Tu firma en la app vale lo mismo que en el protocolo en papel.`
+      : 'Tu cuenta Kozan se usa solo para leer lo publicado.'} No se vende ni se usa con fines publicitarios.</p>
+    <div class="group" style="margin-top:14px"><label class="row" style="cursor:pointer;align-items:flex-start">
+      <input type="checkbox" id="acepto" style="width:22px;height:22px;flex:none;margin:2px 0 0">
+      <span class="main">He leído y acepto la <a href="privacidad.html" target="_blank" rel="noopener">Política de privacidad</a> (v${V.privacidad}) y los <a href="terminos.html" target="_blank" rel="noopener">Términos de uso</a> (v${V.terminos}).</span></label></div>
+    <div style="margin-top:12px"><button class="btn" id="ok" disabled>Aceptar y continuar</button>
+      <button class="btn danger" id="no">No acepto · cerrar sesión</button></div>
+    <p class="foot">Queda constancia de tu aceptación (correo, versiones y fecha). Puedes retirarla en Ajustes › Mis datos.</p>`;
+  $('#acepto').onchange = (e) => ($('#ok').disabled = !e.target.checked);
+  $('#ok').onclick = async () => {
+    $('#ok').disabled = true;
+    consent.aceptar(SES.correo);
+    await registrarConsent(true);
+    location.hash = '';
+    route(); updatePill();
+  };
+  $('#no').onclick = cerrarSesion;
+}
+
+// Lo que la app guarda de quien la usa, sus permisos y su autorización.
+async function viewMisDatos(v) {
+  setNav('Mis datos', '#/ajustes');
+  const yo = SES.correo;
+  const c = consent.aceptado(yo);
+  const regs = (await store.all('registros')).filter((r) => (r.AutorCorreo || '').toLowerCase() === yo);
+  const inv = regs.reduce((a, r) => sumar(a, consent.clasificar(fileRefs(r.Datos))), { fotos: 0, gps: 0, firmas: 0, adjuntos: 0, bytesFotos: 0 });
+  const porEstado = {};
+  regs.forEach((r) => { const k = r.Estado || 'Sin estado'; porEstado[k] = (porEstado[k] || 0) + 1; });
+  const arch = await store.resumenArchivos();
+  const pend = (await porEnviar()).length;
+  const gps = consent.permisoGPS();
+  const nav = await consent.estadoGPSNavegador();
+  const tk = ls.get('gtok');
+  const google = modo() === 'google' && !DEMO;
+  const constancia = !c ? '—' : !google ? 'Guardada en este equipo' : c.pendiente ? 'Pendiente de registrar en el buzón' : 'Registrada en el buzón';
+  v.innerHTML = `<div class="head"><h1>Mis datos</h1></div>
+    <p class="foot">Lo que Obras DRF guarda de ti (${esc(yo)}) y los permisos que diste.</p>
+    <h3>Tu autorización</h3>
+    <div class="group kv">${filaKV('Aceptaste', esc(consent.textoVersion(c)))}${filaKV('Fecha', fechaHora(c?.fecha))}${filaKV('Constancia', esc(constancia))}</div>
+    <p class="foot"><a href="privacidad.html">Política de privacidad</a> · <a href="terminos.html">Términos de uso</a></p>
+    ${modo() === 'google' ? `<h3>Permisos del teléfono</h3>
+    <div class="group kv">${filaKV('Ubicación en fotos', gps === 'si' ? 'Permitida' : gps === 'no' ? 'No permitida' : 'Se preguntará')}
+      ${nav ? filaKV('Ubicación en el navegador', { granted: 'Concedida', denied: 'Bloqueada', prompt: 'Preguntará' }[nav] || esc(nav)) : ''}
+      ${filaKV('Cámara y fotos', 'Solo al tocar Agregar fotos')}</div>
+    <div style="margin-top:10px"><button class="btn sec" id="gps">${gps === 'si' ? 'No guardar la ubicación de las fotos' : 'Permitir la ubicación en las fotos'}</button></div>
+    ${nav === 'denied' && gps === 'si' ? '<p class="foot">El navegador tiene bloqueada la ubicación para este sitio: actívala en los ajustes del navegador.</p>' : ''}
+    <h3>Tus registros</h3>
+    <div class="group kv">${filaKV('Registros', regs.length)}${Object.entries(porEstado).map(([k, n]) => filaKV('· ' + k, n)).join('')}
+      ${filaKV('Fotos', `${inv.fotos}${inv.fotos ? ` (${inv.gps} con ubicación)` : ''}`)}${filaKV('Firmas', inv.firmas)}${filaKV('Adjuntos', inv.adjuntos)}</div>
+    <p class="foot">Registros a tu nombre que tiene este equipo. Lo enviado queda en el Google Drive del administrador y, una vez visado, en SharePoint.</p>` : ''}
+    <h3>En este equipo</h3>
+    <div class="group kv">${modo() === 'google' ? filaKV('Por enviar', pend) : ''}${filaKV('Archivos guardados', `${arch.n} (${mb(arch.bytes)})`)}
+      ${google ? filaKV('Sesión de Google', tk?.exp > Date.now() ? 'Activa hasta las ' + new Date(tk.exp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : 'Vencida') : ''}
+      ${filaKV('Preferencias', 'Sesión, perfil, vista del avance y permisos')}</div>
+    <div style="margin-top:10px"><button class="btn sec" id="bajar">${ic('down', 20)} Descargar mis datos (JSON)</button>
+      <button class="btn danger" id="borrar" ${pend ? 'disabled' : ''}>Borrar datos de este equipo</button></div>
+    <p class="foot">${pend ? 'Envía tus pendientes antes de borrar. ' : ''}Borrar elimina de este equipo los registros, fotos, firmas y la sesión. Lo ya enviado no se toca.</p>
+    <h3>Corregir o retirar</h3>
+    <div><button class="btn danger" id="retirar" ${pend ? 'disabled' : ''}>Retirar mi autorización</button></div>
+    <p class="foot">Para corregir o eliminar datos ya enviados, escribe a <a href="mailto:${esc(PROYECTO.contacto)}">${esc(PROYECTO.contacto)}</a>. Un registro visado no se borra: se corrige con un registro nuevo o una observación.</p>`;
+  $('#gps') && ($('#gps').onclick = () => { consent.fijarGPS(gps === 'si' ? 'no' : 'si'); route(); });
+  $('#bajar').onclick = () => consent.descargar(`obrasdrf_mis_datos_${today()}.json`, JSON.stringify({
+    generado: new Date().toISOString(), proyecto: PROYECTO.codigo, empresa: PROYECTO.empresa,
+    cuenta: { nombre: SES.nombre, correo: yo, perfil: SES.rol }, autorizacion: c, permisos: { ubicacionFotos: gps || 'sin decidir' },
+    registros: regs.map(sinPrivados),
+  }, null, 1), 'application/json');
+  $('#borrar').onclick = async () => {
+    if (!(await confirmar('Borrar datos de este equipo', 'Se borran de este equipo los registros, fotos, firmas, la sesión y tus preferencias. Lo ya enviado al buzón no se toca. Después tendrás que volver a entrar.', 'Borrar'))) return;
+    const m = modo();
+    await store.borrarTodo();
+    CLAVES_LOCALES.forEach(ls.del); consent.borrar(yo); buzon.olvidar();
+    if (m === 'kozan' && !DEMO) return auth.logout();
+    location.hash = ''; location.reload();
+  };
+  $('#retirar').onclick = async () => {
+    if (!(await confirmar('Retirar autorización', 'Dejarás de poder usar la app con esta cuenta hasta que vuelvas a aceptar la política de privacidad y los términos. Lo que ya enviaste se conserva como documentación de la obra.', 'Retirar'))) return;
+    consent.retirar(yo);
+    await registrarConsent(true);
+    cerrarSesion();
+  };
+}
+
+// Administrador: inventario de lo que se recopila, por persona y por registro, con CSV.
+async function viewInventario(v) {
+  setNav('Inventario de datos', '#/ajustes');
+  if (!esAdmin()) { v.innerHTML = '<div class="empty"><b>Solo el administrador</b>El inventario de datos es para el administrador del proyecto.</div>'; return; }
+  const usuarios = await store.all('usuarios');
+  const regs = await store.all('registros');
+  const hist = (await store.meta('consentimientos')) || [];
+  const ultimo = {};
+  for (const c of hist) if (!ultimo[c.correo] || c.registrado > ultimo[c.correo].registrado) ultimo[c.correo] = c;
+  const P = new Map();
+  const persona = (correo, nombre = '', rol = '') => {
+    const k = String(correo || '(sin correo)').toLowerCase();
+    if (!P.has(k)) P.set(k, { correo: k, nombre, rol, activo: true, regs: 0, fotos: 0, gps: 0, firmas: 0, adjuntos: 0, bytesFotos: 0, ultimo: '' });
+    const p = P.get(k);
+    if (nombre && !p.nombre) p.nombre = nombre;
+    if (rol && !p.rol) p.rol = rol;
+    return p;
+  };
+  persona(SES.correo, SES.nombre, 'Administrador');
+  for (const u of usuarios) { const p = persona(u.Correo, u.Title); p.rol = u.Rol; p.activo = u.Activo !== false; }
+  const detalle = [];
+  for (const r of regs) {
+    const p = persona(r.AutorCorreo, r.Autor);
+    const k = consent.clasificar(fileRefs(r.Datos));
+    p.regs++; sumar(p, k);
+    const f = r.Fecha || (r.Recibido || '').slice(0, 10);
+    if (f > p.ultimo) p.ultimo = f;
+    detalle.push({ r, k });
+  }
+  const personas = [...P.values()].sort((a, b) => (a.nombre || a.correo).localeCompare(b.nombre || b.correo));
+  const autorizacion = (p) => ultimo[p.correo] || (p.correo === SES.correo ? consent.aceptado(SES.correo) : null);
+  const tot = personas.reduce((a, p) => sumar(a, { regs: p.regs, fotos: p.fotos, gps: p.gps, firmas: p.firmas, adjuntos: p.adjuntos, bytesFotos: p.bytesFotos }), {});
+  const vig = personas.filter((p) => consent.vigente(autorizacion(p))).length;
+  const badgeAut = (c) => (consent.vigente(c) ? `<span class="badge ok">Autorizó ${esc(fmtDate((c.fecha || c.registrado || '').slice(0, 10)))}</span>`
+    : c?.retiro ? '<span class="badge bad">Retiró</span>' : '<span class="badge warn">Sin autorización</span>');
+  const txtAut = (c) => (consent.vigente(c) ? 'Vigente' : c?.retiro ? 'Retirada' : c ? 'Versión anterior' : 'Sin autorización');
+  v.innerHTML = `<div class="head"><h1>Inventario de datos</h1></div>
+    <p class="foot">Lo que Obras DRF recopila de cada persona. Cuenta lo que hay en el buzón según la última actualización (${fechaHora(await store.meta('lastSync'))}).</p>
+    <h3>Resumen</h3>
+    <div class="group kv">${filaKV('Personas', `${personas.length} (${personas.filter((p) => p.activo).length} activas)`)}
+      ${filaKV('Autorizaciones vigentes', `${vig} de ${personas.length}`)}${filaKV('Registros', tot.regs || 0)}
+      ${filaKV('Fotos', `${tot.fotos || 0} (${tot.gps || 0} con ubicación · ${mb(tot.bytesFotos || 0)})`)}${filaKV('Firmas', tot.firmas || 0)}${filaKV('Adjuntos', tot.adjuntos || 0)}</div>
+    <h3>Qué se recopila</h3>
+    <div class="group kv">${filaKV('Cuenta', 'Nombre, correo y perfil')}${filaKV('Registros', 'Formularios con autor, fecha y estado')}
+      ${filaKV('Fotos', 'Con ubicación GPS si el autor lo permite')}${filaKV('Firmas', 'Imagen de la firma en pantalla')}
+      ${filaKV('Adjuntos', 'Archivos de los transmittal')}${filaKV('Autorizaciones', 'Correo, versiones y fecha de aceptación o retiro')}</div>
+    <p class="foot">Dónde: Google Drive del administrador (Obras DRF) y, lo visado, SharePoint de ${esc(PROYECTO.empresa)}. Detalle en la <a href="privacidad.html">política de privacidad</a>.</p>
+    <h3>Por persona</h3>
+    <div class="group">${personas.map((p) => `<div class="row"><div class="main"><div class="t">${esc(p.nombre || p.correo)}${p.activo ? '' : ' <span class="badge bad">Inactivo</span>'}</div>
+      <div class="s">${esc(p.correo)} · ${esc(p.rol || 'Sin perfil')}</div>
+      <div class="s">${p.regs} registros · ${p.fotos} fotos (${p.gps} con ubicación) · ${p.firmas} firmas · ${p.adjuntos} adjuntos${p.ultimo ? ' · último ' + esc(fmtDate(p.ultimo)) : ''}</div></div>
+      ${badgeAut(autorizacion(p))}</div>`).join('')}</div>
+    <h3>Exportar</h3>
+    <div><button class="btn sec" id="csvP">${ic('down', 20)} Personas (CSV)</button>
+      <button class="btn sec" id="csvR">${ic('down', 20)} Registros (CSV)</button>
+      <button class="btn sec" id="csvA">${ic('down', 20)} Historial de autorizaciones (CSV)</button>
+      ${DEMO ? '' : `<button class="btn sec" id="syncNow">${ic('sync', 20)} Actualizar desde el buzón</button>`}</div>
+    <p class="foot">Los CSV usan «;» y se abren directo en Excel.</p>`;
+  const hoy = today();
+  $('#csvP').onclick = () => consent.descargar(`obrasdrf_inventario_personas_${hoy}.csv`, consent.csv([
+    ['Nombre', 'Correo', 'Perfil', 'Activo', 'Autorización', 'Versión aceptada', 'Fecha autorización', 'Registros', 'Fotos', 'Fotos con ubicación', 'MB fotos', 'Firmas', 'Adjuntos', 'Último registro'],
+    ...personas.map((p) => { const c = autorizacion(p); return [p.nombre, p.correo, p.rol, p.activo ? 'Sí' : 'No', txtAut(c), c ? consent.textoVersion(c) : '',
+      c ? (c.fecha || c.registrado || '').slice(0, 10) : '', p.regs, p.fotos, p.gps, (p.bytesFotos / 1048576).toFixed(2).replace('.', ','), p.firmas, p.adjuntos, p.ultimo]; }),
+  ]));
+  $('#csvR').onclick = () => consent.descargar(`obrasdrf_inventario_registros_${hoy}.csv`, consent.csv([
+    ['Código', 'Tipo', 'Fecha', 'Estado', 'Autor', 'Correo', 'Fotos', 'Fotos con ubicación', 'Firmas', 'Adjuntos', 'Versión aceptada al enviar', 'En SharePoint', 'Uid'],
+    ...detalle.sort((a, b) => String(a.r.Fecha).localeCompare(String(b.r.Fecha))).map(({ r, k }) => [r.Codigo || '', r.Tipo, r.Fecha || '', r.Estado || '', r.Autor || '', r.AutorCorreo || '',
+      k.fotos, k.gps, k.firmas, k.adjuntos, r.Consentimiento ? consent.textoVersion(r.Consentimiento) : '', r.SharePoint ? 'Sí' : 'No', r.Uid]),
+  ]));
+  $('#csvA').onclick = () => consent.descargar(`obrasdrf_autorizaciones_${hoy}.csv`, consent.csv([
+    ['Correo', 'Nombre', 'Perfil', 'Acción', 'Privacidad', 'Términos', 'Fecha en el equipo', 'Registrado en el buzón'],
+    ...hist.map((c) => [c.correo, c.nombre, c.rol, c.retiro ? 'Retiro' : 'Aceptación', c.privacidad, c.terminos, c.fecha, c.registrado]),
+  ]));
+  $('#syncNow') && ($('#syncNow').onclick = () => trySync(true));
+}
+
 // ---------- Router ----------
 
 async function route() {
@@ -1113,11 +1331,12 @@ async function route() {
   if (!SES) return viewLogin(v);
   if (DEMO && modo() === 'google' && !SES.rol) return viewPerfil(v);
   if (!SES.rol) return viewSinAcceso(v);
+  if (!consent.vigente(consent.aceptado(SES.correo))) return viewAutorizacion(v);
   if (esTerreno()) await sembrarCatalogo();
   const [path, query = ''] = location.hash.slice(1).split('?');
   let [, name = 'inicio', arg] = path.split('/');
   if (!name || (name === 'inicio' && esTerreno())) name = esTerreno() ? 'registros' : 'inicio';
-  const tab = { obra: 'obras', nuevo: 'registros', reg: 'registros' }[name] || name;
+  const tab = { obra: 'obras', nuevo: 'registros', reg: 'registros', misdatos: 'ajustes', inventario: 'ajustes' }[name] || name;
   renderTabs(TABS.some(([id]) => id === tab) ? tab : 'inicio');
   document.body.classList.toggle('docview', name === 'reg');
   if (name === 'obra') return viewObra(v, decodeURIComponent(arg));
@@ -1126,6 +1345,8 @@ async function route() {
   if (name === 'reg') return viewRegistro(v, decodeURIComponent(arg));
   if (name === 'obras') return viewObras(v);
   if (name === 'ajustes') return viewAjustes(v);
+  if (name === 'misdatos') return viewMisDatos(v);
+  if (name === 'inventario') return viewInventario(v);
   return viewInicio(v);
 }
 

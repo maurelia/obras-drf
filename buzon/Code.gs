@@ -7,7 +7,7 @@
  * y la URL (…/exec) va en BUZON_URL de config.js.
  *
  * Todo queda en la carpeta «Obras DRF» del Drive de quien lo publica:
- *   Obras DRF/obrasdrf_datos.json         usuarios, obras, etapas y todos los registros
+ *   Obras DRF/obrasdrf_datos.json         usuarios, obras, etapas, registros y autorizaciones
  *   Obras DRF/Registros/<TIPO>/<fecha>_<id>/  registro.json + fotos, firmas y adjuntos
  *
  * La app manda el token de Google de quien está usando la app; aquí se valida
@@ -19,6 +19,9 @@ const PROYECTO = 'DRF-OF-2509-06';
 const SIGLA = 'OF';                   // códigos de registro: PDA-OF-001
 const RAIZ = 'Obras DRF';
 const DATOS = 'obrasdrf_datos.json';
+// Versiones de privacidad.html y terminos.html (= CONFIG.POLITICAS de config.js).
+// Sin aceptación vigente el buzón no recibe registros.
+const POLITICAS = { privacidad: 2, terminos: 1 };
 
 // Qué formatos puede enviar cada perfil (igual que js/forms.js).
 const PERMISOS = {
@@ -71,6 +74,23 @@ function usuario_(token) {
 
 const soloAdmin_ = (u) => { if (!u.admin) throw new Error('Solo el administrador puede hacer esto'); };
 
+// ---------- Autorizaciones ----------
+
+const vigente_ = (c) => !!c && !c.retiro
+  && Number(c.privacidad) >= POLITICAS.privacidad && Number(c.terminos) >= POLITICAS.terminos;
+// Historial: se agrega, nunca se reemplaza. Lo que vale es lo último de cada correo.
+const ultimoConsent_ = (d, correo) => d.consentimientos.filter((c) => c.correo === correo)
+  .reduce((a, c) => (!a || c.registrado > a.registrado ? c : a), null);
+function anotarConsent_(d, u, q) {
+  const c = {
+    correo: u.correo, nombre: u.nombre || '', rol: u.rol || '',
+    privacidad: Number(q.privacidad) || 0, terminos: Number(q.terminos) || 0, retiro: !!q.retiro,
+    fecha: String(q.fecha || ''), registrado: new Date().toISOString(),
+  };
+  d.consentimientos.push(c);
+  return c;
+}
+
 // ---------- Acciones ----------
 
 function accion_(q, u) {
@@ -80,7 +100,18 @@ function accion_(q, u) {
       const d = leer_();
       const mios = Object.values(d.registros).filter((r) => r.AutorCorreo === u.correo)
         .map((r) => ({ Uid: r.Uid, Estado: r.Estado, Codigo: r.Codigo, Correlativo: r.Correlativo, Revisor: r.Revisor, Comentario: r.Comentario }));
-      return { usuario: u, obras: d.obras, partidas: d.partidas, mios };
+      return { usuario: u, obras: d.obras, partidas: d.partidas, mios, consentimiento: ultimoConsent_(d, u.correo) };
+    }
+
+    // Aceptación (o retiro) de la política de privacidad y los términos de uso.
+    case 'consentir': {
+      if (!u.rol) throw new Error(u.correo + ' no está autorizado en Obras DRF.');
+      return conBloqueo_(() => {
+        const d = leer_();
+        const c = anotarConsent_(d, u, q);
+        escribir_(d);
+        return { consentimiento: c };
+      });
     }
 
     // Recibe un registro firmado con sus archivos (base64).
@@ -92,6 +123,10 @@ function accion_(q, u) {
       if (!u.admin && (PERMISOS[u.rol] || []).indexOf(r.Tipo) < 0) throw new Error('Tu perfil (' + u.rol + ') no puede enviar ' + r.Tipo);
       return conBloqueo_(() => {
         const d = leer_();
+        let c = ultimoConsent_(d, u.correo);
+        // Aceptó sin señal y la constancia viaja con el envío.
+        if (!vigente_(c) && vigente_(q.consentimiento)) c = anotarConsent_(d, u, q.consentimiento);
+        if (!vigente_(c)) throw new Error('Falta tu aceptación de la política de privacidad y los términos de uso vigentes: abre la app y acéptalos.');
         const prev = d.registros[r.Uid];
         if (prev && prev.AutorCorreo !== u.correo && !u.admin) throw new Error('El registro pertenece a otro usuario');
         if (prev && prev.Estado === 'Aprobado') throw new Error('El registro ya fue aprobado; no se puede reemplazar');
@@ -102,6 +137,7 @@ function accion_(q, u) {
           Codigo: prev ? prev.Codigo : '', Correlativo: prev ? prev.Correlativo : null,
           Revisor: prev ? prev.Revisor : '', Comentario: prev ? prev.Comentario : '',
           Recibido: new Date().toISOString(), Carpeta: carpeta.getId(),
+          Consentimiento: { privacidad: c.privacidad, terminos: c.terminos, fecha: c.fecha || c.registrado },
         });
         escribirJson_(carpeta, 'registro.json', rec);
         d.registros[r.Uid] = rec;
@@ -133,7 +169,7 @@ function accion_(q, u) {
     case 'datos': {
       soloAdmin_(u);
       const d = leer_();
-      return { usuarios: d.usuarios, obras: d.obras, partidas: d.partidas, registros: Object.values(d.registros) };
+      return { usuarios: d.usuarios, obras: d.obras, partidas: d.partidas, registros: Object.values(d.registros), consentimientos: d.consentimientos };
     }
 
     // Visar (Aprobado), observar o marcar como subido a SharePoint.
@@ -220,7 +256,8 @@ function raiz_() {
 function leer_() {
   const it = raiz_().getFilesByName(DATOS);
   const d = it.hasNext() ? JSON.parse(it.next().getBlob().getDataAsString('UTF-8')) : {};
-  return { proyecto: PROYECTO, usuarios: d.usuarios || [], obras: d.obras || [], partidas: d.partidas || [], registros: d.registros || {} };
+  return { proyecto: PROYECTO, usuarios: d.usuarios || [], obras: d.obras || [], partidas: d.partidas || [], registros: d.registros || {},
+    consentimientos: d.consentimientos || [] };
 }
 
 function escribir_(d) { escribirJson_(raiz_(), DATOS, d); }

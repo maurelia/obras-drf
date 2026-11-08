@@ -18,7 +18,10 @@ export const CONFIG = {
   BIBLIOTECA: '',           // biblioteca de documentos; vacío = la principal (Documentos)
   CARPETA: 'OBRAS FLUVIALES/07_PROTOCOLOS/03_REGISTROS_APP', // carpeta de las Obras Fluviales dentro de la biblioteca
   LIST_PREFIX: 'DRF_',      // prefijo de las listas (base del panel y de Power BI)
-  VERSION: '0.6.6',
+  // Versiones de privacidad.html y terminos.html. Al cambiar una, súbela aquí y en
+  // buzon/Code.gs: la app vuelve a pedir la aceptación a todos.
+  POLITICAS: { privacidad: 2, terminos: 1 },
+  VERSION: '0.7.0',
 };
 
 export const PROYECTO = {
@@ -26,6 +29,7 @@ export const PROYECTO = {
   codigo: 'DRF-OF-2509-06',
   sigla: 'OF',              // va en los códigos de registro: PDA-OF-001
   empresa: 'S.C.M. Atacama Kozan',
+  contacto: 'jc.maurelia@gmail.com', // administrador: privacidad y términos
 };
 
 export const HAY_KOZAN = !!CONFIG.CLIENT_ID;

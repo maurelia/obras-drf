@@ -96,6 +96,20 @@ export async function putFile(f) {
   return f;
 }
 export const getFile = (id) => tx('files', 'readonly', (s) => reqP(s.get(id)));
+export async function resumenArchivos() {
+  const fs = await tx('files', 'readonly', (s) => reqP(s.getAll()));
+  return { n: fs.length, bytes: fs.reduce((a, f) => a + (f.blob?.size || 0), 0) };
+}
+
+// Borra todo lo guardado en este equipo (registros, archivos, cola y estado).
+export async function borrarTodo() {
+  if (db) { db.close(); db = undefined; }
+  await new Promise((ok, fail) => {
+    const r = indexedDB.deleteDatabase(DB);
+    r.onsuccess = r.onblocked = () => ok();
+    r.onerror = () => fail(r.error);
+  });
+}
 
 // URL para mostrar un archivo: local si está en el equipo; si no, se baja de SharePoint.
 const urls = new Map();
