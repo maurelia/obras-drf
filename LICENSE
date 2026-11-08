@@ -1,0 +1,14 @@
+Copyright (c) 2026 S.C.M. Atacama Kozan. Todos los derechos reservados.
+
+Obras DRF (app de registros de las Obras Fluviales DRF, proyecto DRF-OF-2509-06)
+es software propietario de S.C.M. Atacama Kozan. El código es visible en este
+repositorio solo porque así se publica la app; eso no otorga ninguna licencia.
+
+Sin autorización previa y por escrito de S.C.M. Atacama Kozan, queda prohibido
+copiar, modificar, distribuir, publicar, sublicenciar o usar este software o sus
+datos, en todo o en parte, salvo para usar la app publicada como usuario
+autorizado del proyecto.
+
+Las librerías de terceros incluidas en vendor/ (MSAL Browser de Microsoft y
+html2pdf.js) mantienen sus propias licencias MIT; ver vendor/msal-LICENSE y el
+encabezado de cada archivo.

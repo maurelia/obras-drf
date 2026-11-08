@@ -87,3 +87,7 @@ Ajustes → Usuarios, no recibe ni entrega nada.
 - Los campos propios de cada formulario van en la columna `Datos` (JSON) hasta fijar los formatos.
 - Códigos de registro `PDA-OF-001`: los asigna el buzón al visar (bajo bloqueo), así nunca se repite un correlativo.
 - Al publicar una versión nueva, subir `CACHE` en `sw.js` para que los teléfonos se actualicen.
+
+## Licencia
+
+© 2026 S.C.M. Atacama Kozan. Todos los derechos reservados. Ver [LICENSE](LICENSE).

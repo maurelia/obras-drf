@@ -1,6 +1,6 @@
 // Interfaz: navegación por hash (#/inicio, #/obras, #/obra/<uid>, #/registros,
 // #/nuevo/<tipo>, #/reg/<uid>, #/ajustes).
-import { CONFIG, DEMO, HAY_KOZAN } from '../config.js';
+import { CONFIG, DEMO, HAY_KOZAN, PROYECTO } from '../config.js';
 import * as auth from './auth.js';
 import * as buzon from './buzon.js';
 import * as graph from './graph.js';
@@ -962,7 +962,8 @@ async function ajustesTerreno(v) {
       <button class="btn danger" id="logout" ${pend ? 'disabled' : ''}>Cerrar sesión</button></div>
     <p class="foot">${pend ? 'Envía los pendientes antes de cerrar sesión. ' : ''}Lo que firmas queda guardado en el Google Drive del administrador del proyecto; tu cuenta solo se usa para identificarte.</p>
     <h3>Acerca de</h3>
-    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>`;
+    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>
+    <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
   $('#enviarYa') && ($('#enviarYa').onclick = () => enviarPendientes(true));
   $('#syncNow').onclick = () => trySync(true);
   $('#logout').onclick = cerrarSesion;
@@ -978,7 +979,8 @@ async function ajustesConsulta(v) {
     <div class="group kv">${filaKV('Sitio', DEMO ? 'Modo demo' : esc(CONFIG.SITE_HOST + CONFIG.SITE_PATH))}${filaKV('Última sincronización', fechaHora(await store.meta('lastSync')))}</div>
     ${DEMO ? '' : `<div style="margin-top:10px"><button class="btn" id="syncNow">${ic('sync', 20)} Sincronizar ahora</button></div>`}
     <h3>Acerca de</h3>
-    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>`;
+    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>
+    <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
   $('#logout').onclick = cerrarSesion;
   $('#syncNow') && ($('#syncNow').onclick = () => trySync(true));
 }
@@ -1019,7 +1021,8 @@ async function viewAjustes(v) {
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
     <h3>Acerca de</h3>
-    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>`;
+    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>
+    <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
   $('#demoRol') && ($('#demoRol').onchange = async (e) => {
     try { localStorage.setItem('demoRol', e.target.value); } catch {}
     SES = null; await cargarSesion(); route();
