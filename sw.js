@@ -1,9 +1,9 @@
 // Service worker: deja la app disponible sin señal. Los datos viajan por
 // Graph y el buzón de Apps Script (nunca se cachean aquí); los cambios offline viven en IndexedDB.
-const CACHE = 'obrasdrf-v20';
+const CACHE = 'obrasdrf-v21';
 const SHELL = [
   './', 'index.html', 'privacidad.html', 'terminos.html', 'config.js', 'manifest.json', 'icon.svg', 'vendor/msal-browser.min.js',
-  'js/app.js', 'js/consent.js', 'js/auth.js', 'js/graph.js', 'js/buzon.js', 'js/publicar.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
+  'js/app.js', 'js/consent.js', 'js/monitor.js', 'js/auth.js', 'js/graph.js', 'js/buzon.js', 'js/publicar.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
   'js/forms.js', 'js/engine.js', 'js/avance.js', 'vendor/html2pdf.bundle.min.js',
 ];
 
@@ -20,6 +20,6 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (e.request.method !== 'GET' || url.origin !== location.origin || e.request.cache === 'no-store') return;
   e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((r) => r || fetch(e.request)));
 });

@@ -9,6 +9,7 @@
  * Todo queda en la carpeta «Obras DRF» del Drive de quien lo publica:
  *   Obras DRF/obrasdrf_datos.json         usuarios, obras, etapas, registros y autorizaciones
  *   Obras DRF/Registros/<TIPO>/<fecha>_<id>/  registro.json + fotos, firmas y adjuntos
+ *   Obras DRF/obrasdrf_monitoreo.json     errores de la app y último acceso de cada equipo
  *
  * La app manda el token de Google de quien está usando la app; aquí se valida
  * (debe ser de nuestro cliente OAuth) y de ahí sale el correo. Quien publica el
@@ -21,7 +22,9 @@ const RAIZ = 'Obras DRF';
 const DATOS = 'obrasdrf_datos.json';
 // Versiones de privacidad.html y terminos.html (= CONFIG.POLITICAS de config.js).
 // Sin aceptación vigente el buzón no recibe registros.
-const POLITICAS = { privacidad: 2, terminos: 1 };
+const POLITICAS = { privacidad: 3, terminos: 1 };
+const MONITOREO = 'obrasdrf_monitoreo.json';
+const MAX_EVENTOS = 1000; // se conservan los más recientes
 
 // Qué formatos puede enviar cada perfil (igual que js/forms.js).
 const PERMISOS = {
@@ -227,6 +230,55 @@ function accion_(q, u) {
       });
     }
 
+    // ---- Monitoreo ----
+
+    // Errores de la app y latido de uso. Basta una sesión válida de nuestro cliente OAuth.
+    case 'reportar': {
+      const corta = (v, n) => String(v == null ? '' : v).slice(0, n);
+      const ahora = new Date().toISOString();
+      const ev = (Array.isArray(q.eventos) ? q.eventos : []).slice(0, 50).map((e) => ({
+        id: corta(e.id, 12), tipo: corta(e.tipo, 12), mensaje: corta(e.mensaje, 400), veces: Math.min(Number(e.veces) || 1, 9999),
+        fecha: corta(e.fecha, 30), ultimo: corta(e.ultimo, 30), stack: corta(e.stack, 1500), ruta: corta(e.ruta, 80),
+        lugar: corta(e.lugar, 200), version: corta(e.version, 12), enLinea: !!e.enLinea, dispositivo: corta(e.dispositivo, 60),
+        correo: u.correo, recibido: ahora,
+      }));
+      return conBloqueo_(() => {
+        const m = leerMonitoreo_();
+        m.eventos = m.eventos.concat(ev).slice(-MAX_EVENTOS);
+        const k = u.correo + ' · ' + corta(q.dispositivo, 60);
+        const a = m.accesos[k] || { correo: u.correo, dispositivo: corta(q.dispositivo, 60), primero: ahora, reportes: 0 };
+        a.ultimo = ahora; a.version = corta(q.version, 12); a.rol = u.rol || ''; a.reportes += ev.length;
+        m.accesos[k] = a;
+        escribirJson_(raiz_(), MONITOREO, m);
+        return { recibidos: ev.length };
+      });
+    }
+
+    case 'monitoreo': {
+      soloAdmin_(u);
+      const m = leerMonitoreo_();
+      const d = leer_();
+      const regs = Object.values(d.registros);
+      return {
+        eventos: m.eventos, accesos: Object.values(m.accesos),
+        buzon: {
+          hora: new Date().toISOString(), politicas: POLITICAS, usuarios: d.usuarios.length,
+          registros: regs.length, porVisar: regs.filter((r) => r.Estado === 'Enviado').length,
+          porSubir: regs.filter((r) => r.Estado === 'Aprobado' && !r.SharePoint).length,
+        },
+      };
+    }
+
+    case 'limpiarMonitoreo': {
+      soloAdmin_(u);
+      return conBloqueo_(() => {
+        const m = leerMonitoreo_();
+        m.eventos = [];
+        escribirJson_(raiz_(), MONITOREO, m);
+        return {};
+      });
+    }
+
     default: throw new Error('Acción desconocida: ' + q.accion);
   }
 }
@@ -261,6 +313,12 @@ function leer_() {
 }
 
 function escribir_(d) { escribirJson_(raiz_(), DATOS, d); }
+
+function leerMonitoreo_() {
+  const it = raiz_().getFilesByName(MONITOREO);
+  const m = it.hasNext() ? JSON.parse(it.next().getBlob().getDataAsString('UTF-8')) : {};
+  return { eventos: m.eventos || [], accesos: m.accesos || {} };
+}
 
 function escribirJson_(carpeta, nombre, obj) {
   const txt = JSON.stringify(obj, null, 1);

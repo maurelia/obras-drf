@@ -20,8 +20,8 @@ export const CONFIG = {
   LIST_PREFIX: 'DRF_',      // prefijo de las listas (base del panel y de Power BI)
   // Versiones de privacidad.html y terminos.html. Al cambiar una, súbela aquí y en
   // buzon/Code.gs: la app vuelve a pedir la aceptación a todos.
-  POLITICAS: { privacidad: 2, terminos: 1 },
-  VERSION: '1.0.0',
+  POLITICAS: { privacidad: 3, terminos: 1 },
+  VERSION: '1.1.0',
 };
 
 export const PROYECTO = {

@@ -3,6 +3,7 @@
 // acceso al Drive de quien usa la app) y lo manda al script del buzón, que corre
 // con la cuenta del administrador, valida el token y guarda todo en su Drive.
 import { CONFIG, PROYECTO } from '../config.js';
+import { medir } from './monitor.js';
 
 const SCOPE = 'openid email profile';
 const K = 'gtok';
@@ -47,6 +48,7 @@ export function olvidar() { ls.del(K); ls.del('gCorreo'); }
 // text/plain evita la consulta previa CORS, que Apps Script no responde.
 async function call(accion, params = {}, interactivo = true) {
   const tk = await token(interactivo);
+  const t0 = performance.now();
   let res;
   try {
     res = await fetch(CONFIG.BUZON_URL, {
@@ -54,7 +56,8 @@ async function call(accion, params = {}, interactivo = true) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ accion, token: tk, ...params }),
     });
-  } catch { throw new Error('Sin conexión con el buzón'); }
+  } catch { medir(accion, performance.now() - t0, false); throw new Error('Sin conexión con el buzón'); }
+  medir(accion, performance.now() - t0, res.ok);
   if (!res.ok) throw new Error(`Buzón: error ${res.status}`);
   const out = await res.json();
   if (!out.ok) {
@@ -115,3 +118,11 @@ export const datos = (interactivo = false) => call('datos', {}, interactivo);
 export const estado = async (uid, cambios) => (await call('estado', { uid, cambios })).registro;
 export const eliminar = (uid) => call('eliminar', { uid });
 export const guardar = (lista, items) => call('guardar', { lista, items });
+
+// ---------- Monitoreo ----------
+
+// Errores de la app y latido de uso (versión y equipo). Cualquier usuario con sesión.
+export const reportar = (eventos, dispositivo) => call('reportar', { eventos, dispositivo, version: CONFIG.VERSION }, false);
+// Administrador: errores y equipos registrados; limpiar borra los errores (no los accesos).
+export const monitoreo = (interactivo = false) => call('monitoreo', {}, interactivo);
+export const limpiarMonitoreo = () => call('limpiarMonitoreo');

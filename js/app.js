@@ -1,5 +1,5 @@
 // Interfaz: navegación por hash (#/inicio, #/obras, #/obra/<uid>, #/registros,
-// #/nuevo/<tipo>, #/reg/<uid>, #/ajustes, #/misdatos, #/inventario).
+// #/nuevo/<tipo>, #/reg/<uid>, #/ajustes, #/misdatos, #/inventario, #/monitoreo).
 import { CONFIG, DEMO, HAY_KOZAN, PROYECTO } from '../config.js';
 import * as auth from './auth.js';
 import * as buzon from './buzon.js';
@@ -7,6 +7,7 @@ import * as graph from './graph.js';
 import * as store from './store.js';
 import * as publicar from './publicar.js';
 import * as consent from './consent.js';
+import * as monitor from './monitor.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, uid, nextCode } from './schema.js';
 import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FASES_OBRA } from './catalogo.js';
 import { FORMS, PUNTOS, evalCota, puede } from './forms.js';
@@ -242,6 +243,7 @@ async function trySync(manual = false) {
     if (!manual && !buzon.hayToken()) return updatePill();
     await registrarConsent(manual);
     await enviarPendientes(manual);
+    enviarMonitoreo();
     try {
       if (esAdmin()) await bajarDatos(manual); else await aplicarSesion(await buzon.sesion(manual));
       if (manual) toast('Actualizado desde Google Drive');
@@ -270,7 +272,7 @@ function toast(msg, bad = false) {
   const t = document.createElement('div');
   t.setAttribute('role', 'status');
   t.className = 'notice toast';
-  if (bad) t.classList.add('bad');
+  if (bad) { t.classList.add('bad'); if (navigator.onLine) monitor.registrar('aviso', msg); }
   t.textContent = msg;
   document.body.append(t);
   setTimeout(() => t.remove(), 3500);
@@ -1118,11 +1120,12 @@ async function viewSinAcceso(v) {
 const linkRow = (go, t, s) => `<button class="row" data-go="${go}"><div class="main"><div class="t">${esc(t)}</div>${s ? `<div class="s">${esc(s)}</div>` : ''}</div><span class="chev">${ic('chev', 18)}</span></button>`;
 const mb = (b) => `${(b / 1048576).toLocaleString('es-CL', { maximumFractionDigits: 1 })} MB`;
 const sumar = (a, k) => { for (const x in k) a[x] = (a[x] || 0) + k[x]; return a; };
-const CLAVES_LOCALES = ['gtok', 'gCorreo', 'perfilGoogle', 'modo', 'demoSesion', 'demoRol', 'faseVista', 'permGPS'];
+const CLAVES_LOCALES = ['gtok', 'gCorreo', 'perfilGoogle', 'modo', 'demoSesion', 'demoRol', 'faseVista', 'permGPS', 'monitor:cola', 'monitor:ultimoEnvio'];
 
 function bloquePrivacidad() {
   return `<h3>Privacidad</h3><div class="group">${linkRow('#/misdatos', 'Mis datos', 'Qué guarda la app de ti, permisos y autorización')}
-    ${esAdmin() ? linkRow('#/inventario', 'Inventario de datos', 'Lo que se recopila de cada persona, exportable a CSV') : ''}</div>`;
+    ${esAdmin() ? linkRow('#/inventario', 'Inventario de datos', 'Lo que se recopila de cada persona, exportable a CSV') : ''}</div>
+    ${esAdmin() ? `<h3>Monitoreo</h3><div class="group">${linkRow('#/monitoreo', 'Monitoreo y errores', 'Estado del buzón, versiones en uso y errores de la app')}</div>` : ''}`;
 }
 
 // Pregunta de confirmación dentro de la app (sin diálogos del navegador).
@@ -1163,7 +1166,7 @@ function viewAutorizacion(v) {
       : `Hola, ${esc(SES.nombre)}. Para usar Obras DRF necesitamos tu autorización.`}</p>
     <h3>Qué recopila la app</h3>
     <div class="group kv">${filaKV('Tu cuenta', 'Nombre y correo, para identificarte')}
-      ${terreno ? filaKV('Tus registros', 'Formularios, fotos, firma y adjuntos que envías') + filaKV('Ubicación', 'Solo en las fotos, si lo permites (se pregunta aparte)')
+      ${terreno ? filaKV('Tus registros', 'Formularios, fotos, firma y adjuntos que envías') + filaKV('Ubicación', 'Solo en las fotos, si lo permites (se pregunta aparte)') + filaKV('Diagnóstico', 'Reportes de error, versión de la app y tipo de equipo')
         : filaKV('Consulta', 'Solo ves lo publicado en SharePoint')}</div>
     <p class="foot">${terreno ? `Se guarda en el Google Drive del administrador del proyecto y, una vez visado, en el SharePoint de ${esc(PROYECTO.empresa)}. Tu firma en la app vale lo mismo que en el protocolo en papel.`
       : 'Tu cuenta Kozan se usa solo para leer lo publicado.'} No se vende ni se usa con fines publicitarios.</p>
@@ -1218,7 +1221,7 @@ async function viewMisDatos(v) {
     <h3>En este equipo</h3>
     <div class="group kv">${modo() === 'google' ? filaKV('Por enviar', pend) : ''}${filaKV('Archivos guardados', `${arch.n} (${mb(arch.bytes)})`)}
       ${google ? filaKV('Sesión de Google', tk?.exp > Date.now() ? 'Activa hasta las ' + new Date(tk.exp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : 'Vencida') : ''}
-      ${filaKV('Preferencias', 'Sesión, perfil, vista del avance y permisos')}</div>
+      ${filaKV('Reportes de error por enviar', monitor.pendientes())}${filaKV('Preferencias', 'Sesión, perfil, vista del avance y permisos')}</div>
     <div style="margin-top:10px"><button class="btn sec" id="bajar">${ic('down', 20)} Descargar mis datos (JSON)</button>
       <button class="btn danger" id="borrar" ${pend ? 'disabled' : ''}>Borrar datos de este equipo</button></div>
     <p class="foot">${pend ? 'Envía tus pendientes antes de borrar. ' : ''}Borrar elimina de este equipo los registros, fotos, firmas y la sesión. Lo ya enviado no se toca.</p>
@@ -1292,7 +1295,8 @@ async function viewInventario(v) {
     <h3>Qué se recopila</h3>
     <div class="group kv">${filaKV('Cuenta', 'Nombre, correo y perfil')}${filaKV('Registros', 'Formularios con autor, fecha y estado')}
       ${filaKV('Fotos', 'Con ubicación GPS si el autor lo permite')}${filaKV('Firmas', 'Imagen de la firma en pantalla')}
-      ${filaKV('Adjuntos', 'Archivos de los transmittal')}${filaKV('Autorizaciones', 'Correo, versiones y fecha de aceptación o retiro')}</div>
+      ${filaKV('Adjuntos', 'Archivos de los transmittal')}${filaKV('Autorizaciones', 'Correo, versiones y fecha de aceptación o retiro')}
+      ${filaKV('Diagnóstico', 'Errores de la app, versión y equipo de cada persona (ver Monitoreo)')}</div>
     <p class="foot">Dónde: Google Drive del administrador (Obras DRF) y, lo visado, SharePoint de ${esc(PROYECTO.empresa)}. Detalle en la <a href="privacidad.html">política de privacidad</a>.</p>
     <h3>Por persona</h3>
     <div class="group">${personas.map((p) => `<div class="row"><div class="main"><div class="t">${esc(p.nombre || p.correo)}${p.activo ? '' : ' <span class="badge bad">Inactivo</span>'}</div>
@@ -1321,6 +1325,100 @@ async function viewInventario(v) {
     ...hist.map((c) => [c.correo, c.nombre, c.rol, c.retiro ? 'Retiro' : 'Aceptación', c.privacidad, c.terminos, c.fecha, c.registrado]),
   ]));
   $('#syncNow') && ($('#syncNow').onclick = () => trySync(true));
+}
+
+// ---------- Monitoreo (administrador) ----------
+
+// Manda al buzón los errores acumulados y el latido de uso (solo con autorización vigente).
+function enviarMonitoreo(forzar = false) {
+  if (DEMO || modo() !== 'google' || !SES || !navigator.onLine || !buzon.hayToken()) return Promise.resolve(false);
+  if (!consent.vigente(consent.aceptado(SES.correo))) return Promise.resolve(false);
+  return monitor.enviar((ev, disp) => buzon.reportar(ev, disp), forzar);
+}
+
+// Versión publicada en el sitio (sin pasar por la copia del service worker).
+async function versionPublicada() {
+  try {
+    const txt = await (await fetch('config.js?v=' + Date.now(), { cache: 'no-store' })).text();
+    return txt.match(/VERSION: '([^']+)'/)?.[1] || null;
+  } catch { return null; }
+}
+
+async function viewMonitoreo(v) {
+  setNav('Monitoreo', '#/ajustes');
+  if (!esAdmin()) { v.innerHTML = '<div class="empty"><b>Solo el administrador</b>El monitoreo es para el administrador del proyecto.</div>'; return; }
+  v.innerHTML = '<div class="skel" style="margin-top:24px"></div><div class="skel"></div>';
+  await enviarMonitoreo(true);
+  let m = null, err = null, ms = null;
+  if (!DEMO) {
+    const t0 = performance.now();
+    try { m = await buzon.monitoreo(true); ms = Math.round(performance.now() - t0); } catch (e) { err = e.message; }
+  }
+  const publicada = await versionPublicada();
+  const t = monitor.resumenTiempos();
+  const pend = (await porEnviar()).length;
+  const local = monitor.colaLocal();
+  const eventos = m ? m.eventos : local.map((e) => ({ ...e, correo: SES.correo }));
+  const accesos = (m?.accesos || []).sort((a, b) => String(b.ultimo).localeCompare(String(a.ultimo)));
+  const grupos = new Map();
+  for (const e of eventos) {
+    const k = e.tipo + '|' + e.mensaje;
+    const g = grupos.get(k) || { tipo: e.tipo, mensaje: e.mensaje, veces: 0, ultimo: '', correos: new Set(), versiones: new Set(), ej: e };
+    g.veces += e.veces || 1; g.correos.add(e.correo); g.versiones.add(e.version);
+    if ((e.ultimo || e.fecha) > g.ultimo) { g.ultimo = e.ultimo || e.fecha; g.ej = e; }
+    grupos.set(k, g);
+  }
+  const lista = [...grupos.values()].sort((a, b) => b.ultimo.localeCompare(a.ultimo));
+  const hace7 = new Date(Date.now() - 7 * 864e5).toISOString();
+  const recientes = eventos.filter((e) => (e.ultimo || e.fecha) >= hace7).reduce((a, e) => a + (e.veces || 1), 0);
+  const pol = m?.buzon?.politicas;
+  const polOk = !pol || (pol.privacidad === CONFIG.POLITICAS.privacidad && pol.terminos === CONFIG.POLITICAS.terminos);
+  const TIPO = { error: 'Error', promesa: 'Promesa', recurso: 'Recurso', aviso: 'Aviso', consola: 'Consola', prueba: 'Prueba' };
+  const badge = (ok, si, no) => `<span class="badge ${ok ? 'ok' : 'warn'}">${esc(ok ? si : no)}</span>`;
+  v.innerHTML = `<div class="head"><h1>Monitoreo</h1></div>
+    <p class="foot">Estado de la app y del buzón, versiones en uso y errores reportados por los equipos.</p>
+    <h3>Estado</h3>
+    <div class="group kv">
+      ${filaKV('Buzón', DEMO ? 'Modo demo' : err ? `<span class="badge bad">Sin respuesta</span> ${esc(err)}` : `${badge(ms < 5000, 'Responde', 'Lento')} ${ms} ms`)}
+      ${filaKV('Versión publicada', esc(publicada || '—'))}
+      ${filaKV('Versión en este equipo', `${esc(CONFIG.VERSION)} ${publicada && publicada !== CONFIG.VERSION ? badge(false, '', 'Actualización pendiente') : ''}`)}
+      ${pol ? filaKV('Políticas en el buzón', `Privacidad v${pol.privacidad} · Términos v${pol.terminos} ${polOk ? '' : badge(false, '', 'No coincide con la app')}`) : ''}
+      ${filaKV('Buzón en esta sesión', t.n ? `${t.n} llamadas · mediana ${t.mediana ?? '—'} ms · máx. ${t.max ?? '—'} ms${t.fallas ? ` · ${t.fallas} fallidas` : ''}` : 'Sin llamadas')}
+      ${filaKV('Última sincronización', fechaHora(await store.meta('lastSync')))}
+      ${filaKV('Por enviar (este equipo)', pend)}${filaKV('Errores por enviar (este equipo)', local.length)}
+      ${m ? filaKV('Por visar', m.buzon.porVisar) + filaKV('Visados por subir a SharePoint', m.buzon.porSubir) : ''}</div>
+    ${!polOk ? '<p class="foot">El buzón exige otra versión de las políticas que la app: vuelve a implementar buzon/Code.gs.</p>' : ''}
+    <h3>Equipos</h3>
+    ${accesos.length ? `<div class="group">${accesos.map((a) => `<div class="row"><div class="main"><div class="t">${esc(a.correo)}</div>
+      <div class="s">${esc(a.dispositivo)} · v${esc(a.version)} · último uso ${esc(fechaHora(a.ultimo))}${a.reportes ? ` · ${a.reportes} reportes` : ''}</div></div>
+      ${publicada ? badge(a.version === publicada, 'Al día', 'Versión antigua') : ''}</div>`).join('')}</div>`
+      : `<p class="foot">${DEMO ? 'En modo demo no hay buzón.' : 'Aún no hay equipos registrados: cada equipo se informa al sincronizar.'}</p>`}
+    <h3>Errores${eventos.length ? ` (${recientes} en los últimos 7 días)` : ''}</h3>
+    ${lista.length ? `<div class="group">${lista.map((g) => `<details class="row" style="display:block">
+      <summary style="cursor:pointer;list-style:none"><div class="t" style="overflow-wrap:anywhere">${esc(g.mensaje.slice(0, 160))}</div>
+        <div class="s">${esc(TIPO[g.tipo] || g.tipo)} · ${g.veces} ${g.veces === 1 ? 'vez' : 'veces'} · ${esc([...g.correos].join(', '))} · v${esc([...g.versiones].join(', v'))} · ${esc(fechaHora(g.ultimo))}</div></summary>
+      <div class="s" style="margin-top:6px">Pantalla: ${esc(g.ej.ruta || '—')} · ${esc(g.ej.dispositivo || '')} · ${g.ej.enLinea ? 'con señal' : 'sin señal'}${g.ej.lugar ? ' · ' + esc(g.ej.lugar) : ''}</div>
+      ${g.ej.stack ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:.75rem;margin:6px 0 0;color:var(--label2)">${esc(g.ej.stack)}</pre>` : ''}</details>`).join('')}</div>`
+      : '<p class="foot">Sin errores reportados.</p>'}
+    <div style="margin-top:12px"><button class="btn sec" id="recargar">${ic('sync', 20)} Actualizar</button>
+      <button class="btn sec" id="probar">Enviar un error de prueba</button>
+      ${eventos.length ? `<button class="btn sec" id="csvE">${ic('down', 20)} Errores (CSV)</button>` : ''}
+      ${m?.eventos.length ? '<button class="btn danger" id="limpiar">Limpiar errores</button>' : ''}</div>
+    <p class="foot">Cada equipo guarda sus errores y los manda al buzón (archivo obrasdrf_monitoreo.json en tu Drive) al sincronizar; también informa su versión cada 6 horas. Se conservan los 1.000 más recientes.</p>`;
+  $('#recargar').onclick = () => route();
+  $('#probar').onclick = async () => {
+    monitor.registrar('prueba', new Error('Error de prueba enviado desde Monitoreo'));
+    route();
+  };
+  $('#csvE') && ($('#csvE').onclick = () => consent.descargar(`obrasdrf_errores_${today()}.csv`, consent.csv([
+    ['Último', 'Primero', 'Tipo', 'Mensaje', 'Veces', 'Correo', 'Versión', 'Dispositivo', 'Pantalla', 'Con señal', 'Lugar', 'Stack'],
+    ...eventos.map((e) => [e.ultimo, e.fecha, TIPO[e.tipo] || e.tipo, e.mensaje, e.veces, e.correo, e.version, e.dispositivo, e.ruta, e.enLinea ? 'Sí' : 'No', e.lugar || '', e.stack || '']),
+  ])));
+  $('#limpiar') && ($('#limpiar').onclick = async () => {
+    if (!(await confirmar('Limpiar errores', 'Se borran del buzón todos los errores reportados. Los equipos registrados se mantienen.', 'Limpiar'))) return;
+    try { await buzon.limpiarMonitoreo(); toast('Errores borrados'); } catch (e) { toast(e.message, true); }
+    route();
+  });
 }
 
 // ---------- Versiones nuevas ----------
@@ -1357,7 +1455,7 @@ async function route() {
   const [path, query = ''] = location.hash.slice(1).split('?');
   let [, name = 'inicio', arg] = path.split('/');
   if (!name || (name === 'inicio' && esTerreno())) name = esTerreno() ? 'registros' : 'inicio';
-  const tab = { obra: 'obras', nuevo: 'registros', reg: 'registros', misdatos: 'ajustes', inventario: 'ajustes' }[name] || name;
+  const tab = { obra: 'obras', nuevo: 'registros', reg: 'registros', misdatos: 'ajustes', inventario: 'ajustes', monitoreo: 'ajustes' }[name] || name;
   renderTabs(TABS.some(([id]) => id === tab) ? tab : 'inicio');
   document.body.classList.toggle('docview', name === 'reg');
   if (name === 'obra') return viewObra(v, decodeURIComponent(arg));
@@ -1368,6 +1466,7 @@ async function route() {
   if (name === 'ajustes') return viewAjustes(v);
   if (name === 'misdatos') return viewMisDatos(v);
   if (name === 'inventario') return viewInventario(v);
+  if (name === 'monitoreo') return viewMonitoreo(v);
   return viewInicio(v);
 }
 
@@ -1387,6 +1486,9 @@ document.addEventListener('click', (e) => {
   if (go) location.hash = go.dataset.go;
 });
 
+const errorOriginal = console.error.bind(console);
+console.error = (...a) => { errorOriginal(...a); const e = a.find((x) => x instanceof Error); if (e && navigator.onLine) monitor.registrar('consola', e); };
+monitor.instalar(); // antes que nada: también captura errores del arranque
 (async function start() {
   $('#view').innerHTML = '<div class="skel" style="margin-top:80px"></div><div class="skel"></div><div class="skel"></div>';
   try { await auth.initAuth(); } catch (e) { console.error(e); toast('Error de inicio de sesión: ' + e.message, true); }

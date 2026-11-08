@@ -22,6 +22,15 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.1.0 (08-11-2026)
+
+- Monitoreo propio, sin servicios externos (`js/monitor.js`): errores de JavaScript, promesas rechazadas,
+  avisos de error y tiempos del buzón; cada equipo los guarda y los manda al buzón (acción `reportar`,
+  archivo `Obras DRF/obrasdrf_monitoreo.json`, 1.000 eventos máx.) con un latido de versión cada 6 h.
+- Ajustes › Monitoreo y errores (administrador): estado del buzón, versión publicada vs. instalada,
+  equipos, errores agrupados con stack, CSV y limpiar.
+- Política de privacidad v3 (diagnóstico técnico): la app vuelve a pedir la aceptación.
+
 ## Versión 1.0.0 (08-11-2026)
 
 Primera versión final, en producción con un solo usuario: el administrador (dueño del buzón).
