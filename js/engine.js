@@ -328,7 +328,9 @@ function casillas(c, v, apilado = false) {
   const ops = [...c.options, ...[...sel].filter((x) => !c.options.includes(x))];
   return `<span class="cks${apilado ? ' ap' : ''}">${ops.map((o) => `<span class="ck${sel.has(o) ? ' on' : ''}">${sel.has(o) ? '☒' : '☐'}&nbsp;${esc(o)}</span>`).join(' ')}</span>`;
 }
-const docVal = (c, v, ctx, apilado) => (CON_CASILLAS.includes(c.type) && c.options?.length ? casillas(c, v, apilado) : esc(labelOf(c, v, ctx)));
+// En tablas se apilan (como Área y Estado del PDA original), salvo opciones cortas tipo Sí / No, que van en línea (como la humectación).
+const apilar = (c) => c.options.some((o) => o.length > 3);
+const docVal = (c, v, ctx, apilado) => (CON_CASILLAS.includes(c.type) && c.options?.length ? casillas(c, v, apilado && apilar(c)) : esc(labelOf(c, v, ctx)));
 
 function campoDoc(c, d, ctx) {
   const v = d[c.k];
@@ -382,7 +384,7 @@ export function renderDoc(reg, ctx) {
     + (reg.Revisor ? kvRow('Revisado por', esc(reg.Revisor)) : '') + (reg.Comentario ? kvRow('Comentario de revisión', esc(reg.Comentario)) : '');
   // Formato Kozan (como los formatos originales en Word): franja azul, logo, bloque de la
   // empresa y pie con dirección. Al imprimir, encabezado y pie se repiten en cada página.
-  return `<article class="doc kz">
+  return `<article class="doc kz${spec.estilo ? ' kz-' + spec.estilo : ''}">
     <header class="kz-pagehead"><img class="kz-logo" src="img/kozan_logo.png" alt="Atacama Kozan">
       <div class="kz-org">S.C.M. ATACAMA KOZAN<br>Sub-Gerencia General<br>Dirección de Proyectos</div></header>
     <table class="kz-frame"><thead><tr><td><div class="kz-sp-h"></div></td></tr></thead>

@@ -292,7 +292,7 @@ export const FORMS = {
   },
 
   PHU: {
-    titulo: 'Protocolo de humectación – Planilla de chequeo', corto: 'Humectación planta', rev: '', roles: [A, S, O], icon: 'drop',
+    titulo: 'Protocolo de humectación – Planilla de chequeo', corto: 'Humectación planta', rev: '', roles: [A, S, O], icon: 'drop', estilo: 'naranja', // como el original: barras naranjas en las secciones
     secciones: [
       { t: 'Datos generales', campos: [
         { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },

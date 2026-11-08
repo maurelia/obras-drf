@@ -22,6 +22,11 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.2.2 (08-11-2026)
+
+- Humectación (PHU) impresa como su original: título en barra azul 1F3864, secciones en barras naranjas E8501E,
+  etiquetas F2F2F2 (`estilo: 'naranja'` en forms.js). Casillas Sí / No en línea dentro de las tablas.
+
 ## Versión 1.2.1 (08-11-2026)
 
 - Impreso: número de página en el pie (recuadro gris a la derecha, `@page kozan` con cajas de margen) y
