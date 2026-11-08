@@ -1323,6 +1323,27 @@ async function viewInventario(v) {
   $('#syncNow') && ($('#syncNow').onclick = () => trySync(true));
 }
 
+// ---------- Versiones nuevas ----------
+
+// La app abre desde la copia del equipo (sirve sin señal) y baja la versión nueva en
+// segundo plano. Cuando el service worker nuevo toma el control, se recarga sola para
+// aplicarla, salvo con un formulario abierto: en ese caso espera a que se cierre.
+let recargaPendiente = false;
+function activarActualizaciones() {
+  const sw = navigator.serviceWorker;
+  const habiaVersion = !!sw.controller; // la primera instalación no necesita recargar
+  sw.register('sw.js').then((reg) => {
+    // Al volver a la app (queda abierta días en el teléfono), revisa si hay versión nueva.
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch((e) => console.warn('Service worker:', e.message));
+  sw.addEventListener('controllerchange', () => {
+    if (!habiaVersion || recargaPendiente) return;
+    recargaPendiente = true;
+    if (!formActual) location.reload();
+    else toast('Hay una versión nueva de la app: se aplicará al salir del formulario');
+  });
+}
+
 // ---------- Router ----------
 
 async function route() {
@@ -1356,6 +1377,7 @@ addEventListener('hashchange', async () => {
     const f = formActual; formActual = null;
     if (await f.guardarSiCambio()) { toast('Guardado como borrador'); updatePill(); }
   }
+  if (recargaPendiente) return location.reload();
   obraTab = 'etapas';
   scrollTo(0, 0);
   route();
@@ -1372,5 +1394,5 @@ document.addEventListener('click', (e) => {
   await route();
   await updatePill();
   trySync();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js');
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') activarActualizaciones();
 })();

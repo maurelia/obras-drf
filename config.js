@@ -21,7 +21,7 @@ export const CONFIG = {
   // Versiones de privacidad.html y terminos.html. Al cambiar una, súbela aquí y en
   // buzon/Code.gs: la app vuelve a pedir la aceptación a todos.
   POLITICAS: { privacidad: 2, terminos: 1 },
-  VERSION: '0.7.0',
+  VERSION: '0.7.1',
 };
 
 export const PROYECTO = {
