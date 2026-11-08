@@ -22,6 +22,11 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.2.1 (08-11-2026)
+
+- Impreso: número de página en el pie (recuadro gris a la derecha, `@page kozan` con cajas de margen) y
+  casillas como en los formatos originales (todas las opciones, ☒ la elegida, ☐ las demás; en tablas, una por línea).
+
 ## Versión 1.2.0 (08-11-2026)
 
 - Todo en Google Drive por ahora: `SHAREPOINT: false` en `config.js` oculta la subida a SharePoint y el panel

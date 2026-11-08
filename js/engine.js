@@ -320,6 +320,16 @@ export function fileRefs(v, out = []) {
 const sigDoc = (ref) => (ref ? `<img class="sigimg" data-fid="${esc(ref.fid)}" ${ref.driveId ? `data-drive="${esc(ref.driveId)}"` : ''} alt="Firma">` : '');
 const kvRow = (k, v) => `<tr><th>${esc(k)}</th><td>${v}</td></tr>`;
 
+// Casillas como en los formatos originales: todas las opciones, ☒ la elegida y ☐ las demás.
+// Un valor que no está entre las opciones (texto libre) se agrega al final.
+const CON_CASILLAS = ['radio', 'checks', 'select'];
+function casillas(c, v, apilado = false) {
+  const sel = new Set((Array.isArray(v) ? v : vacio(v) ? [] : [v]).map(String));
+  const ops = [...c.options, ...[...sel].filter((x) => !c.options.includes(x))];
+  return `<span class="cks${apilado ? ' ap' : ''}">${ops.map((o) => `<span class="ck${sel.has(o) ? ' on' : ''}">${sel.has(o) ? '☒' : '☐'}&nbsp;${esc(o)}</span>`).join(' ')}</span>`;
+}
+const docVal = (c, v, ctx, apilado) => (CON_CASILLAS.includes(c.type) && c.options?.length ? casillas(c, v, apilado) : esc(labelOf(c, v, ctx)));
+
 function campoDoc(c, d, ctx) {
   const v = d[c.k];
   switch (c.type) {
@@ -327,7 +337,7 @@ function campoDoc(c, d, ctx) {
       const rows = v || [];
       if (!rows.length) return '<p class="muted">Sin registros.</p>';
       return `<div class="tablewrap"><table class="dt"><thead><tr>${c.cols.map((col) => `<th>${esc(col.l)}</th>`).join('')}${c.calc ? '<th>Estado</th>' : ''}</tr></thead><tbody>
-        ${rows.map((r) => { const res = c.calc?.(r); return `<tr>${c.cols.map((col) => `<td>${esc(labelOf(col, r[col.k], ctx))}</td>`).join('')}${c.calc ? `<td>${res ? `<span class="badge ${res.nivel}">${esc(res.res)}</span>` : ''}</td>` : ''}</tr>`; }).join('')}
+        ${rows.map((r) => { const res = c.calc?.(r); return `<tr>${c.cols.map((col) => `<td>${docVal(col, r[col.k], ctx, true)}</td>`).join('')}${c.calc ? `<td>${res ? `<span class="badge ${res.nivel}">${esc(res.res)}</span>` : ''}</td>` : ''}</tr>`; }).join('')}
       </tbody></table></div>`;
     }
     case 'points': {
@@ -341,7 +351,7 @@ function campoDoc(c, d, ctx) {
           <td><span class="badge ${e.nivel}">${e.res}</span> <small>${NIVEL_TXT[e.nivel]}</small></td></tr>`).join('')}</tbody></table></div>`;
     }
     case 'checklist': return `<table class="dt"><thead><tr><th>Ítem de control</th><th>Resultado</th><th>Comentario</th></tr></thead><tbody>
-      ${c.items.map((it, i) => `<tr><td>${esc(it)}</td><td>${esc(v?.[i]?.v || '')}</td><td>${esc(v?.[i]?.c || '')}</td></tr>`).join('')}</tbody></table>`;
+      ${c.items.map((it, i) => `<tr><td>${esc(it)}</td><td>${c.options ? casillas(c, v?.[i]?.v, true) : esc(v?.[i]?.v || '')}</td><td>${esc(v?.[i]?.c || '')}</td></tr>`).join('')}</tbody></table>`;
     case 'firmas': return `<table class="dt"><thead><tr><th>Etapa</th><th>Nombre</th><th>Firma</th><th>Fecha</th></tr></thead><tbody>
       ${c.etapas.map((et, i) => `<tr><td>${esc(et)}</td><td>${esc(v?.[i]?.nombre || '')}</td><td>${sigDoc(v?.[i]?.firma)}</td><td>${fmtDate(v?.[i]?.fecha)}</td></tr>`).join('')}</tbody></table>`;
     case 'photos': return vacio(v) ? '' : `<div class="docphotos">${v.map((r, i) => `<figure><img data-fid="${esc(r.fid)}" ${r.driveId ? `data-drive="${esc(r.driveId)}"` : ''} alt="Foto ${i + 1}">
@@ -360,6 +370,7 @@ export function renderDoc(reg, ctx) {
       if (blk !== null) { if (c.type === 'photos' && blk) blocks.push(`<p class="muted">${esc(c.l)}</p>${blk}`); else if (blk) blocks.push(blk); continue; }
       if (c.type === 'signature') kv.push(kvRow(c.l, sigDoc(d[c.k]) || '<span class="muted">Sin firma</span>'));
       else if (c.type === 'files') kv.push(kvRow(c.l, (d[c.k] || []).map((r) => r.webUrl ? `<a href="${esc(r.webUrl)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)).join('<br>') || '—'));
+      else if (CON_CASILLAS.includes(c.type) && c.options?.length) kv.push(kvRow(c.l, casillas(c, d[c.k])));
       else if (c.type !== 'info') kv.push(kvRow(c.l, esc(labelOf(c, d[c.k], ctx)).replace(/\n/g, '<br>') || '<span class="muted">—</span>'));
     }
     return `<section class="docsec"><h4>${esc(s.t)}</h4>${s.nota ? `<p class="muted small">${esc(s.nota)}</p>` : ''}${kv.length ? `<table class="kvt">${kv.join('')}</table>` : ''}${blocks.join('')}</section>`;

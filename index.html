@@ -253,16 +253,29 @@ table.kvt, table.dt { width: 100%; border-collapse: collapse; }
 .kz .tablewrap { background: none; border-radius: 0; }
 .kz .dt th, .kz .dt td { padding: 4px 6px; }
 .kz .muted { color: #333; }
+.kz .cks { display: inline; } .kz .ck { margin-right: 10px; white-space: nowrap; } .kz .ck.on { font-weight: 700; }
+.kz .cks.ap .ck { display: block; margin-right: 0; }
 .kz-gen { font-size: 10px; color: #7F7F7F; text-align: right; margin: 12px 0 0; }
 .kz-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin: 14px 18px 0; padding-top: 6px; border-top: 1px solid #BFBFBF; font-size: 11px; color: #7F7F7F; background: #fff; }
 .kz-foot b { color: #7F7F7F; }
+/* Página con nombre: el pie y el número de página van en los márgenes de la hoja (solo documentos Kozan). */
+.doc.kz { page: kozan; }
+@page kozan {
+  size: A4; margin: 8mm 12mm 13mm;
+  @bottom-left { content: "S.C.M. Atacama Kozan - Parcela Los Olivos s/n, Tierra Amarilla."; font: 8pt Arial, Helvetica, sans-serif; color: #7F7F7F;
+    border-top: 1px solid #BFBFBF; vertical-align: top; padding-top: 2mm; }
+  @bottom-center { content: ""; border-top: 1px solid #BFBFBF; }
+  @bottom-right { content: "Fono: (+56) (52) 2203856"; font: 8pt Arial, Helvetica, sans-serif; color: #7F7F7F;
+    border-top: 1px solid #BFBFBF; vertical-align: top; padding-top: 2mm; text-align: right; }
+  @bottom-right-corner { content: counter(page); font: 700 9pt Arial, Helvetica, sans-serif; color: #000; background: #D9D9D9;
+    text-align: center; vertical-align: middle; margin: 2mm 0 3mm 2mm; }
+}
 @media print {
-  @page { size: A4; margin: 8mm 12mm; }
   .doc.kz { font-size: 9.5pt; padding: 0; }
+  .kz-foot { display: none !important; }
   .kz-frame > thead { display: table-header-group; } .kz-frame > tfoot { display: table-footer-group; }
-  .kz-sp-h { height: 30mm; } .kz-sp-f { height: 12mm; }
+  .kz-sp-h { height: 30mm; } .kz-sp-f { height: 2mm; }
   .kz-pagehead { position: fixed; top: 0; left: 0; right: 0; padding: 6mm 0 0; }
-  .kz-foot { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; padding: 2mm 0 1mm; }
   .kz-body { padding: 0; }
   .kz .docsec { break-inside: auto; } .kz .kvt tr, .kz .docphotos figure { break-inside: avoid; }
   .kz .docphotos { grid-template-columns: repeat(2, 1fr); }
