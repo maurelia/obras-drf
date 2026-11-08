@@ -4,34 +4,76 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Obras DRF · Privacidad</title>
+<meta name="description" content="Política de privacidad de la app Obras DRF (proyecto DRF-OF-2509-06).">
 <style>
-  :root { --bg:#fff; --fg:#1d1d1f; --mut:#6e6e73; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#000; --fg:#f5f5f7; --mut:#a1a1a6; } }
+  :root { --bg:#fff; --fg:#1d1d1f; --mut:#6e6e73; --sep:#d2d2d7; --card:#f5f5f7; --link:#0066cc; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#000; --fg:#f5f5f7; --mut:#a1a1a6; --sep:#38383a; --card:#1c1c1e; --link:#2997ff; } }
   body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 -apple-system, "Segoe UI", Roboto, sans-serif; }
   main { max-width:680px; margin:0 auto; padding:32px 16px 48px; }
-  h1 { font-size:28px; margin:0 0 4px; } h2 { font-size:19px; margin:28px 0 6px; }
-  .mut { color:var(--mut); } a { color:#0a84ff; }
+  h1 { font-size:28px; margin:0 0 4px; } h2 { font-size:19px; margin:30px 0 6px; }
+  p, li { margin:0 0 8px; } ul { padding-left:22px; margin:0 0 8px; }
+  .mut { color:var(--mut); } a { color:var(--link); }
+  .card { background:var(--card); border-radius:12px; padding:14px 16px; margin:18px 0 0; }
+  table { width:100%; border-collapse:collapse; font-size:15px; margin:6px 0 8px; }
+  th, td { text-align:left; vertical-align:top; padding:8px 8px 8px 0; border-bottom:1px solid var(--sep); }
+  th { font-weight:600; width:34%; }
 </style>
 </head>
 <body>
 <main>
   <h1>Política de privacidad</h1>
-  <p class="mut">Obras DRF · Proyecto DRF-OF-2509-06 · Actualizada el 31-10-2026</p>
+  <p class="mut">Obras DRF · Proyecto DRF-OF-2509-06 · Versión 2 · Vigente desde el 08-11-2026</p>
 
-  <h2>Qué es</h2>
-  <p>Obras DRF es la app de registros de terreno (protocolos, partes diarios, controles topográficos y transmittals) de las obras fluviales del proyecto. La usa solo el personal autorizado por el administrador.</p>
+  <div class="card">
+    <b>En breve.</b> La app usa tu nombre y correo para identificarte y firmar tus registros. Lo que registras se guarda en el Google Drive del administrador del proyecto y, una vez visado, en el SharePoint de proyectos de S.C.M. Atacama Kozan. La app no lee tu Gmail ni tu Drive, no vende datos y no muestra publicidad.
+  </div>
 
-  <h2>Datos de tu cuenta Google</h2>
-  <p>Al entrar con Google la app recibe solo tu nombre, tu correo y tu foto de perfil. Se usan para identificarte, verificar que tengas un perfil asignado y firmar como autor los registros que envías. La app no accede a tu Gmail, a tu Drive ni a ningún otro dato de tu cuenta.</p>
+  <h2>1. Quién es el responsable</h2>
+  <p>Obras DRF es la app de registros de terreno de las Obras Fluviales DRF (proyecto DRF-OF-2509-06) de <b>S.C.M. Atacama Kozan</b>. El administrador del proyecto, Juan Carlos Maurelia, la opera y responde por los datos. Contacto: <a href="mailto:jc.maurelia@gmail.com">jc.maurelia@gmail.com</a>.</p>
+  <p>La usa solo el personal que el administrador autoriza: personal de Kozan, de empresas colaboradoras y supervisores con acceso de consulta.</p>
 
-  <h2>Datos que ingresas</h2>
-  <p>Los registros, fotos, firmas y adjuntos que envías se guardan en el Google Drive del administrador del proyecto. Una vez visados, el administrador los publica en el SharePoint de proyectos de la empresa como respaldo documental de la obra. Mientras no se envían, quedan solo en tu equipo.</p>
+  <h2>2. Qué datos se tratan</h2>
+  <table>
+    <tr><th>Cuenta Google</th><td>Nombre, correo y foto de perfil (permisos <i>openid</i>, <i>email</i> y <i>profile</i>). No se pide acceso a Gmail, Drive, Contactos ni a ningún otro servicio de tu cuenta.</td></tr>
+    <tr><th>Cuenta Microsoft (Kozan)</th><td>Solo para el administrador y para quien consulta: nombre y correo (<i>User.Read</i>), y acceso al sitio de SharePoint de proyectos para leer o publicar los registros visados.</td></tr>
+    <tr><th>Registros</th><td>Lo que ingresas en los formularios: partes diarios, controles topográficos, maquinaria, humectación, ensayos, transmittals y revisiones, con fecha y hora.</td></tr>
+    <tr><th>Fotos, firma y adjuntos</th><td>Las fotos que tomas o eliges, tu firma dibujada en pantalla y los archivos que adjuntas.</td></tr>
+    <tr><th>Ubicación</th><td>Al crear un registro, la app pide la ubicación GPS del teléfono para dejar constancia de dónde se hizo. Solo se toma en ese momento, nunca en segundo plano, y puedes negarla: el registro se guarda igual, sin coordenadas.</td></tr>
+    <tr><th>Perfil</th><td>El perfil que te asigna el administrador (por ejemplo, topógrafo u operador), que define qué formularios ves.</td></tr>
+  </table>
+  <p>La app no usa cookies de seguimiento, analítica ni publicidad.</p>
 
-  <h2>Con quién se comparten</h2>
-  <p>Solo con el administrador y con el equipo del proyecto que consulta los registros visados. No se venden ni se ceden a terceros, ni se usan con fines publicitarios.</p>
+  <h2>3. Para qué se usan</h2>
+  <ul>
+    <li>Identificarte y comprobar que tienes un perfil asignado.</li>
+    <li>Registrar quién hizo, firmó, revisó o aprobó cada registro.</li>
+    <li>Llevar el control y el avance de las obras, y respaldar la entrega de las obras ante el mandante y la autoridad.</li>
+  </ul>
+  <p>No se usan para otros fines, ni para evaluar el desempeño de las personas fuera del control de las obras.</p>
 
-  <h2>Cómo pedir cambios</h2>
-  <p>Para corregir o eliminar tus datos, o para dejar de usar la app, escribe al administrador del proyecto (el correo de contacto aparece en la pantalla de inicio de sesión de Google).</p>
+  <h2>4. Dónde se guardan</h2>
+  <ul>
+    <li><b>En tu teléfono</b>, mientras un registro no se envía (por ejemplo, sin señal). Queda en el almacenamiento del navegador del equipo y se borra al enviarlo y cerrar sesión.</li>
+    <li><b>En el Google Drive del administrador</b>, al enviarlo. Se recibe a través de un script de Google Apps Script que solo acepta usuarios autorizados.</li>
+    <li><b>En el SharePoint de proyectos de S.C.M. Atacama Kozan</b>, cuando el administrador visa el registro y lo publica como respaldo documental de la obra (PDF y archivos).</li>
+  </ul>
+  <p>Google y Microsoft alojan estos servicios con sus propias medidas de seguridad. Por eso los datos pueden quedar en servidores fuera de Chile.</p>
+
+  <h2>5. Con quién se comparten</h2>
+  <p>Con el administrador y con el equipo del proyecto que consulta los registros visados. Las empresas colaboradoras ven solo los registros aprobados. Los registros pueden entregarse al mandante, a la inspección técnica o a la autoridad cuando lo exija el contrato o la ley. No se venden, no se ceden a terceros y no se usan con fines publicitarios.</p>
+
+  <h2>6. Uso de los datos de Google</h2>
+  <p>El uso y la transferencia de información recibida de las API de Google se ajustan a la <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Política de datos de usuario de los servicios de API de Google</a>, incluidos los requisitos de uso limitado. Los datos de tu cuenta Google se usan solo para identificarte dentro de la app. No se transfieren a terceros, no se usan para publicidad y no se usan para entrenar modelos de inteligencia artificial.</p>
+
+  <h2>7. Cuánto tiempo se conservan</h2>
+  <p>Los registros visados son documentación de la obra. Se conservan mientras dure el proyecto y después, durante el plazo que exijan el contrato y la normativa. Tu acceso y tu perfil se eliminan cuando dejas de participar en el proyecto. Los registros no enviados que quedan en tu teléfono se borran al limpiar los datos del navegador.</p>
+
+  <h2>8. Tus derechos</h2>
+  <p>Conforme a la Ley N.° 19.628 sobre protección de la vida privada y sus modificaciones, puedes pedir acceso a tus datos, su rectificación o su eliminación, y oponerte a su tratamiento. Para hacerlo, escribe a <a href="mailto:jc.maurelia@gmail.com">jc.maurelia@gmail.com</a>. Hay una excepción: un registro que ya está visado forma parte del respaldo de la obra y no se borra. Si contiene un error, se corrige con un nuevo registro o con una observación.</p>
+  <p>Puedes quitarle a la app el acceso a tu cuenta Google en cualquier momento, desde <a href="https://myaccount.google.com/permissions" rel="noopener">myaccount.google.com/permissions</a>.</p>
+
+  <h2>9. Cambios a esta política</h2>
+  <p>Si esta política cambia, se publica aquí con una nueva fecha de vigencia y se avisa a los usuarios.</p>
 
   <p style="margin-top:32px"><a href="./">← Volver a la app</a></p>
 </main>
