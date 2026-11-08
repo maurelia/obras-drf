@@ -1,8 +1,8 @@
 // Service worker: deja la app disponible sin señal. Los datos viajan por
 // Graph y el buzón de Apps Script (nunca se cachean aquí); los cambios offline viven en IndexedDB.
-const CACHE = 'obrasdrf-v21';
+const CACHE = 'obrasdrf-v22';
 const SHELL = [
-  './', 'index.html', 'privacidad.html', 'terminos.html', 'config.js', 'manifest.json', 'icon.svg', 'vendor/msal-browser.min.js',
+  './', 'index.html', 'img/kozan_logo.png', 'privacidad.html', 'terminos.html', 'config.js', 'manifest.json', 'icon.svg', 'vendor/msal-browser.min.js',
   'js/app.js', 'js/consent.js', 'js/monitor.js', 'js/auth.js', 'js/graph.js', 'js/buzon.js', 'js/publicar.js', 'js/schema.js', 'js/store.js', 'js/catalogo.js',
   'js/forms.js', 'js/engine.js', 'js/avance.js', 'vendor/html2pdf.bundle.min.js',
 ];

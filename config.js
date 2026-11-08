@@ -10,6 +10,9 @@ export const CONFIG = {
   // Google (obligatorio)
   GOOGLE_CLIENT_ID: '811261991852-gvh71bipgm609q6ucfcl4cjju8nmkgk9.apps.googleusercontent.com',     // Id. de cliente OAuth (aplicación web) en Google Cloud
   BUZON_URL: 'https://script.google.com/macros/s/AKfycbzyixlzs0i8o6RUx6D36n8EtzupHDDphgaQIcfkwVHmNQVaaVohJ5HKe5JdXFix_ipN/exec',            // URL …/exec de la aplicación web de Apps Script (buzon/Code.gs)
+  // SharePoint: false = por ahora todo queda en el Google Drive del administrador
+  // (sin botón de subida y el panel cuenta lo visado). true = usa SharePoint con los datos de abajo.
+  SHAREPOINT: false,
   // SharePoint de proyectos (para subir lo visado)
   CLIENT_ID: '',            // Id. de aplicación (cliente) del registro en Entra ID
   TENANT_ID: '',            // Id. de directorio (inquilino) de Atacama Kozan
@@ -21,7 +24,7 @@ export const CONFIG = {
   // Versiones de privacidad.html y terminos.html. Al cambiar una, súbela aquí y en
   // buzon/Code.gs: la app vuelve a pedir la aceptación a todos.
   POLITICAS: { privacidad: 3, terminos: 1 },
-  VERSION: '1.1.0',
+  VERSION: '1.2.0',
 };
 
 export const PROYECTO = {
@@ -33,5 +36,6 @@ export const PROYECTO = {
 };
 
 export const HAY_KOZAN = !!CONFIG.CLIENT_ID;
+export const USA_SP = CONFIG.SHAREPOINT && (HAY_KOZAN || !CONFIG.GOOGLE_CLIENT_ID);
 export const HAY_GOOGLE = !!(CONFIG.GOOGLE_CLIENT_ID && CONFIG.BUZON_URL);
 export const DEMO = !HAY_GOOGLE;

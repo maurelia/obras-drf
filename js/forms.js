@@ -130,6 +130,7 @@ export const FORMS = {
         { k: 'actividad', l: 'Actividad' },
         { k: 'obs', l: 'Observaciones' },
       ] }] },
+      { t: 'Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos', type: 'photos' }] },
       { t: 'Cierre', campos: [
         { k: 'comentarios', l: 'Comentarios adicionales', type: 'textarea' },
         { k: 'firma', l: 'Firma operador', type: 'signature', req: true },
@@ -182,6 +183,7 @@ export const FORMS = {
         { k: 'fotos', l: 'Croquis / fotos', type: 'photos' },
       ] },
       { t: 'F. Observaciones generales', campos: [{ k: 'observaciones', l: 'Observaciones', type: 'textarea' }] },
+      { t: 'Registro fotográfico', campos: [{ k: 'fotosReg', l: 'Fotos', type: 'photos' }] },
       { t: 'G. Responsable del trabajo topográfico', campos: [
         { k: 'firmaNombre', l: 'Nombre', def: 'usuario', req: true },
         { k: 'firmaCargo', l: 'Cargo' },
@@ -235,6 +237,7 @@ export const FORMS = {
         { k: 'paquete', l: 'Nombre de carpeta o paquete' },
       ] },
       { t: 'F. Observaciones de la entrega', campos: [{ k: 'observaciones', l: 'Observaciones', type: 'textarea' }] },
+      { t: 'Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos', type: 'photos' }] },
       { t: 'G. Entrega', nota: 'La recepción y revisión se registran en el Protocolo de revisión de información topográfica.', campos: [
         { k: 'cargo', l: 'Cargo / área' },
         { k: 'firma', l: 'Firma de quien entrega', type: 'signature', req: true },
@@ -280,6 +283,7 @@ export const FORMS = {
         { k: 'nuevaEntrega', l: '¿Requiere nueva entrega?', type: 'radio', options: ['No', 'Sí'] },
         { k: 'comentario', l: 'Comentario de cierre', type: 'textarea' },
       ] },
+      { t: 'Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos', type: 'photos' }] },
       { t: 'F. Responsables', campos: [
         { k: 'cargo', l: 'Cargo / área' },
         { k: 'firma', l: 'Firma revisor', type: 'signature', req: true },
@@ -337,6 +341,7 @@ export const FORMS = {
           { k: 'humedad', l: 'Humedad (%)', type: 'number' },
           { k: 'obs', l: 'Observaciones' },
         ], calc: (r) => evalPanda(r.qd) }] },
+      { t: 'Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos', type: 'photos' }] },
       { t: 'Cierre', campos: [
         { k: 'observaciones', l: 'Observaciones', type: 'textarea' },
         { k: 'firma', l: 'Firma', type: 'signature', req: true },

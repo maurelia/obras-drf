@@ -1,7 +1,7 @@
 // Motor de formularios: con una definición de forms.js arma la pantalla de llenado
 // (renderForm) y el documento para revisar, imprimir o guardar como PDF (renderDoc).
 import { FORMS, PUNTOS, evalCota } from './forms.js';
-import { PROYECTO } from '../config.js';
+import { PROYECTO, CONFIG } from '../config.js';
 import * as store from './store.js';
 import { uid } from './schema.js';
 import { pedirGPS } from './consent.js';
@@ -89,6 +89,7 @@ const chips = (c, v, path, multi) => `<div class="chips" role="${multi ? 'group'
 function fileRefsHtml(refs, path, kind) {
   return (refs || []).map((r, i) => kind === 'photos'
     ? `<figure class="thumb"><img data-fid="${esc(r.fid)}" ${r.driveId ? `data-drive="${esc(r.driveId)}"` : ''} alt="Foto ${i + 1}"><button type="button" class="x" data-rmfile="${esc(path)}" data-i="${i}" aria-label="Quitar foto">×</button>
+       <input class="cap" data-cap="${esc(path)}" data-i="${i}" value="${esc(r.desc || '')}" placeholder="Descripción" aria-label="Descripción de la foto ${i + 1}" maxlength="200">
        ${r.lat ? `<figcaption>${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</figcaption>` : ''}</figure>`
     : `<div class="filerow"><span>${esc(r.name)} <small>${(r.size / 1048576).toFixed(1)} MB</small></span><button type="button" class="navbtn" data-rmfile="${esc(path)}" data-i="${i}">Quitar</button></div>`).join('');
 }
@@ -105,7 +106,9 @@ function campoHtml(c, d, ctx) {
     case 'checks': return `<div class="field col">${lab}${chips(c, v, c.k, true)}</div>`;
     case 'textarea': return `<div class="field col">${lab}${inputHtml(c, v, c.k, ctx)}</div>`;
     case 'photos': return `<div class="field col">${lab}<div class="thumbs">${fileRefsHtml(v, c.k, 'photos')}</div>
-      <label class="btn sec filebtn">Agregar fotos<input type="file" accept="image/*" multiple data-addfile="${c.k}" data-kind="photos" hidden></label></div>`;
+      <div class="fotobtns"><label class="btn sec filebtn">Tomar foto<input type="file" accept="image/*" capture="environment" data-addfile="${c.k}" data-kind="photos" hidden></label>
+      <label class="btn sec filebtn">Elegir de la galería<input type="file" accept="image/*" multiple data-addfile="${c.k}" data-kind="photos" hidden></label></div>
+      <p class="foot" style="margin:0">Sin señal también funciona: las fotos quedan en el teléfono y se envían con el registro.</p></div>`;
     case 'files': return `<div class="field col">${lab}${fileRefsHtml(v, c.k, 'files')}
       <label class="btn sec filebtn">Elegir archivos<input type="file" multiple data-addfile="${c.k}" data-kind="files" hidden></label>${c.nota ? `<p class="foot">${esc(c.nota)}</p>` : ''}</div>`;
     case 'signature': return `<div class="field col">${lab}${sigHtml(v, c.k, c.l)}</div>`;
@@ -256,6 +259,15 @@ export function renderForm(el, { tipo, data, ctx }) {
     }
   };
 
+  // Descripción de cada foto: se guarda al escribir, sin redibujar (no pierde el foco).
+  el.addEventListener('input', (e) => {
+    const inp = e.target; if (!inp.dataset.cap) return;
+    const arr = getPath(d, inp.dataset.cap) || [];
+    const r = arr[Number(inp.dataset.i)]; if (!r) return;
+    r.desc = inp.value.trim();
+    ctx.onChange?.();
+  });
+
   el.addEventListener('change', async (e) => {
     const inp = e.target; if (!inp.dataset.addfile) return;
     const files = [...inp.files]; if (!files.length) return;
@@ -333,7 +345,7 @@ function campoDoc(c, d, ctx) {
     case 'firmas': return `<table class="dt"><thead><tr><th>Etapa</th><th>Nombre</th><th>Firma</th><th>Fecha</th></tr></thead><tbody>
       ${c.etapas.map((et, i) => `<tr><td>${esc(et)}</td><td>${esc(v?.[i]?.nombre || '')}</td><td>${sigDoc(v?.[i]?.firma)}</td><td>${fmtDate(v?.[i]?.fecha)}</td></tr>`).join('')}</tbody></table>`;
     case 'photos': return vacio(v) ? '' : `<div class="docphotos">${v.map((r, i) => `<figure><img data-fid="${esc(r.fid)}" ${r.driveId ? `data-drive="${esc(r.driveId)}"` : ''} alt="Foto ${i + 1}">
-      <figcaption>Foto ${i + 1}${r.lat ? ` · ${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}` : ''}${r.ts ? ` · ${new Date(r.ts).toLocaleString('es-CL')}` : ''}</figcaption></figure>`).join('')}</div>`;
+      <figcaption>Foto ${i + 1}${r.desc ? ` · ${esc(r.desc)}` : ''}${r.lat ? ` · ${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}` : ''}${r.ts ? ` · ${new Date(r.ts).toLocaleString('es-CL')}` : ''}</figcaption></figure>`).join('')}</div>`;
     default: return null;
   }
 }
@@ -352,12 +364,23 @@ export function renderDoc(reg, ctx) {
     }
     return `<section class="docsec"><h4>${esc(s.t)}</h4>${s.nota ? `<p class="muted small">${esc(s.nota)}</p>` : ''}${kv.length ? `<table class="kvt">${kv.join('')}</table>` : ''}${blocks.join('')}</section>`;
   }).join('');
-  return `<article class="doc">
-    <header class="dochead"><div><b>${esc(PROYECTO.empresa)}</b><br>${esc(PROYECTO.nombre)} · ${esc(PROYECTO.codigo)}</div>
-      <div class="dc"><b>${esc(reg.Codigo || (reg.Estado === 'Borrador' ? 'Borrador' : 'Sin código'))}</b><br>${esc(spec.rev || '')}</div></header>
-    <h2 class="doctitle">${esc(spec.titulo)}</h2>
-    <table class="kvt meta">${kvRow('Fecha', fmtDate(reg.Fecha))}${kvRow('Registrado por', esc(reg.Autor))}${kvRow('Estado', esc(reg.Estado))}
-      ${reg.Revisor ? kvRow('Revisado por', esc(reg.Revisor)) : ''}${reg.Comentario ? kvRow('Comentario de revisión', esc(reg.Comentario)) : ''}</table>
-    ${body}
-    <footer class="docfoot">Generado con Obras DRF · ${new Date().toLocaleString('es-CL')}</footer></article>`;
+  const ident = kvRow('Código', `<b>${esc(reg.Codigo || (reg.Estado === 'Borrador' ? 'Borrador' : 'Sin código'))}</b>`)
+    + kvRow('Formato', esc([reg.Tipo, spec.rev].filter(Boolean).join(' · ')))
+    + kvRow('Proyecto', esc(`${PROYECTO.nombre} · ${PROYECTO.codigo}`))
+    + kvRow('Fecha', fmtDate(reg.Fecha)) + kvRow('Registrado por', esc(reg.Autor)) + kvRow('Estado', esc(reg.Estado))
+    + (reg.Revisor ? kvRow('Revisado por', esc(reg.Revisor)) : '') + (reg.Comentario ? kvRow('Comentario de revisión', esc(reg.Comentario)) : '');
+  // Formato Kozan (como los formatos originales en Word): franja azul, logo, bloque de la
+  // empresa y pie con dirección. Al imprimir, encabezado y pie se repiten en cada página.
+  return `<article class="doc kz">
+    <header class="kz-pagehead"><img class="kz-logo" src="img/kozan_logo.png" alt="Atacama Kozan">
+      <div class="kz-org">S.C.M. ATACAMA KOZAN<br>Sub-Gerencia General<br>Dirección de Proyectos</div></header>
+    <table class="kz-frame"><thead><tr><td><div class="kz-sp-h"></div></td></tr></thead>
+      <tfoot><tr><td><div class="kz-sp-f"></div></td></tr></tfoot>
+      <tbody><tr><td><div class="kz-body">
+        <h2 class="doctitle">${esc(spec.titulo)}</h2>
+        <section class="docsec"><h4>Identificación del registro</h4><table class="kvt meta">${ident}</table></section>
+        ${body}
+        <p class="kz-gen">Generado con Obras DRF ${esc(CONFIG.VERSION)} · ${new Date().toLocaleString('es-CL')}</p>
+      </div></td></tr></tbody></table>
+    <footer class="kz-foot"><span>S.C.M. Atacama Kozan - Parcela Los Olivos s/n, Tierra Amarilla.</span><span><b>Fono:</b> (+56) (52) 2203856</span></footer></article>`;
 }

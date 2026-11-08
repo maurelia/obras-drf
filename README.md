@@ -22,6 +22,17 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.2.0 (08-11-2026)
+
+- Todo en Google Drive por ahora: `SHAREPOINT: false` en `config.js` oculta la subida a SharePoint y el panel
+  cuenta lo visado. Con `true` (y los datos de Informática) vuelve el flujo con SharePoint.
+- Fotos en los 8 formatos: «Registro fotográfico» en RCM, PTT, TRT, PRV y PND (PDA, PCT y PHU ya tenían),
+  botón «Tomar foto» (cámara) y «Elegir de la galería», y descripción por foto. Funciona sin señal.
+- Documento impreso con formato Kozan (como los formatos originales en Word): franja azul, logo
+  (`img/kozan_logo.png`), bloque de la empresa, títulos 1F4E79, etiquetas EDF3F8, pie con dirección y fono;
+  encabezado y pie se repiten en cada página.
+- Pendiente: sub-etapas de las obras.
+
 ## Versión 1.1.0 (08-11-2026)
 
 - Monitoreo propio, sin servicios externos (`js/monitor.js`): errores de JavaScript, promesas rechazadas,

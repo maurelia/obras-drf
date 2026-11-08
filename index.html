@@ -181,6 +181,8 @@ section h3 { margin-top: 30px; }
 .thumb figcaption { font-size: .6875rem; color: var(--label3); }
 .thumb .x { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 14px; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 1.1rem; cursor: pointer; }
 .filebtn { margin: 6px 0 10px; } .filebtn input { display: none; }
+.fotobtns { display: flex; flex-wrap: wrap; gap: 8px; } .fotobtns .filebtn { flex: 1 1 140px; margin: 6px 0; }
+.thumb .cap { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 6px 8px; border: .5px solid var(--sep); border-radius: 8px; background: var(--card); color: var(--label); font: inherit; font-size: .8125rem; text-align: left; }
 .field.col label.btn { color: var(--tint); font-size: 1rem; padding-top: 0; cursor: pointer; }
 .filerow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: .5px solid var(--sep); }
 .filerow small { color: var(--label3); }
@@ -227,6 +229,43 @@ table.kvt, table.dt { width: 100%; border-collapse: collapse; }
   .tablewrap { overflow: visible; background: none; }
   .badge { background: none !important; border: 1px solid currentColor; }
   tr, .docsec h4 { break-inside: avoid; }
+}
+
+/* Formato Kozan (formatos originales en Word): Arial, azul 1F4E79, etiquetas EDF3F8, pie gris.
+   Siempre en claro, como papel, también en modo oscuro. */
+.doc.kz { --card: #fff; --bg: #EDF3F8; --label: #000; --label2: #333; --label3: #7F7F7F; --sep: #A6A6A6; --tint: #1F4E79;
+  background: #fff; color: #000; color-scheme: light; font-family: Arial, Helvetica, sans-serif; font-size: 13px; padding: 0 0 10px; overflow: hidden;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.kz * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.kz-pagehead { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 20px 18px 4px; background: #fff; }
+.kz-pagehead::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 9px; background: #4472C4; }
+.kz-logo { height: 60px; width: auto; }
+.kz-org { text-align: right; font-size: 12px; line-height: 1.5; color: #000; }
+.kz-frame { width: 100%; border-collapse: collapse; } .kz-frame > thead, .kz-frame > tfoot { display: none; } .kz-frame td { padding: 0; }
+.kz-body { padding: 0 18px; }
+.kz .doctitle { color: #1F4E79; font-weight: 700; text-align: left; font-size: 16px; margin: 12px 0 6px; letter-spacing: 0; }
+.kz .docsec h4 { color: #1F4E79; font-size: 12.5px; font-weight: 700; margin: 14px 0 4px; }
+.kz table.kvt { border: 1px solid #A6A6A6; }
+.kz .kvt th { background: #EDF3F8; color: #000; font-weight: 700; width: 34%; padding: 5px 7px; border: 1px solid #A6A6A6; }
+.kz .kvt td { padding: 5px 7px; border: 1px solid #A6A6A6; }
+.kz .dt th { background: #1F4E79; color: #fff; font-weight: 700; text-align: center; border: 1px solid #1F4E79; }
+.kz .dt td { border: 1px solid #A6A6A6; }
+.kz .tablewrap { background: none; border-radius: 0; }
+.kz .dt th, .kz .dt td { padding: 4px 6px; }
+.kz .muted { color: #333; }
+.kz-gen { font-size: 10px; color: #7F7F7F; text-align: right; margin: 12px 0 0; }
+.kz-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin: 14px 18px 0; padding-top: 6px; border-top: 1px solid #BFBFBF; font-size: 11px; color: #7F7F7F; background: #fff; }
+.kz-foot b { color: #7F7F7F; }
+@media print {
+  @page { size: A4; margin: 8mm 12mm; }
+  .doc.kz { font-size: 9.5pt; padding: 0; }
+  .kz-frame > thead { display: table-header-group; } .kz-frame > tfoot { display: table-footer-group; }
+  .kz-sp-h { height: 30mm; } .kz-sp-f { height: 12mm; }
+  .kz-pagehead { position: fixed; top: 0; left: 0; right: 0; padding: 6mm 0 0; }
+  .kz-foot { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; padding: 2mm 0 1mm; }
+  .kz-body { padding: 0; }
+  .kz .docsec { break-inside: auto; } .kz .kvt tr, .kz .docphotos figure { break-inside: avoid; }
+  .kz .docphotos { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* PDF para SharePoint: mismo documento, siempre en claro y a ancho A4.

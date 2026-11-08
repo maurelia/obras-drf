@@ -1,6 +1,6 @@
 // Interfaz: navegación por hash (#/inicio, #/obras, #/obra/<uid>, #/registros,
 // #/nuevo/<tipo>, #/reg/<uid>, #/ajustes, #/misdatos, #/inventario, #/monitoreo).
-import { CONFIG, DEMO, HAY_KOZAN, PROYECTO } from '../config.js';
+import { CONFIG, DEMO, HAY_KOZAN, USA_SP, PROYECTO } from '../config.js';
 import * as auth from './auth.js';
 import * as buzon from './buzon.js';
 import * as graph from './graph.js';
@@ -82,9 +82,10 @@ const esAdmin = () => modo() === 'google' && SES?.rol === 'Administrador';
 const esTerreno = () => modo() === 'google' && !esAdmin();
 const soloConsulta = () => modo() === 'kozan';
 const puedeLlenar = (tipo) => !soloConsulta() && puede(SES?.rol, tipo);
-// Visado y subido a SharePoint: es lo que cuenta en el panel (y lo que leerá Power BI).
-const enSP = (r) => r.Estado === 'Aprobado' && (!!r.SharePoint || (soloConsulta() && !DEMO));
-const porSubir = (regs) => regs.filter((r) => r.Estado === 'Aprobado' && !r.SharePoint);
+// Lo que cuenta en el panel: lo visado (solo Drive) o lo visado y subido a SharePoint (con USA_SP).
+const enSP = (r) => r.Estado === 'Aprobado' && (!USA_SP || !!r.SharePoint || (soloConsulta() && !DEMO));
+const porSubir = (regs) => (USA_SP ? regs.filter((r) => r.Estado === 'Aprobado' && !r.SharePoint) : []);
+const txtVisado = () => (USA_SP ? 'visados y subidos a SharePoint' : 'visados');
 
 async function cargarSesion() {
   store.setRemoto(!DEMO && modo() === 'kozan');
@@ -347,7 +348,7 @@ const regRow = (r, obras) => `<button class="row" data-go="#/reg/${esc(r.Uid)}">
   <div class="main"><div class="t">${esc(codigoDe(r))} · ${esc(FORMS[r.Tipo]?.corto || r.Tipo)}${pendIcon(r)}</div>
   <div class="s">${fmtDate(r.Fecha)}${obras[r.ObraUid] ? ' · ' + esc(obras[r.ObraUid].Codigo) : ''} · ${esc(r.Autor)}</div></div>${estadoBadge(r.Estado)}</button>`;
 const pendIcon = (r) => (!DEMO && modo() === 'google' && r.Estado === 'Enviado' && !r._drive ? ' <span class="badge warn" title="Pendiente de envío">●</span>'
-  : esAdmin() && r.Estado === 'Aprobado' && r.Tipo && !r.SharePoint ? ' <span class="badge" title="Visado, falta subir a SharePoint">SP</span>' : '');
+  : USA_SP && esAdmin() && r.Estado === 'Aprobado' && r.Tipo && !r.SharePoint ? ' <span class="badge" title="Visado, falta subir a SharePoint">SP</span>' : '');
 
 // ---------- Obras y etapas (administración) ----------
 
@@ -514,7 +515,7 @@ async function viewInicio(v) {
     <div class="group chartbox">${sinDef ? '<p class="foot" style="padding:16px">Sin obras definitivas con peso todavía.</p>' : chartSerie(serie)}</div>
     <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${FASE_PLURAL[fase].toLowerCase()}</th></tr></thead>
       <tbody>${serie.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td></tr>`).join('')}</tbody></table></details>
-    <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman` : 'Suman'} los protocolos diarios visados y subidos a SharePoint.</p>
+    <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman` : 'Suman'} los protocolos diarios ${txtVisado()}.</p>
 
     <h3>Avance por obra · ${FASE_PLURAL[fase].toLowerCase()}</h3>
     <div class="group">${conPeso.map((o) => {
@@ -673,7 +674,7 @@ async function viewRegistros(v, filtro) {
   const mios = registros.filter((r) => r.AutorCorreo === SES.correo);
   const subir = porSubir(registros);
   const segs = soloConsulta() ? { todos: 'En SharePoint' } : esAdmin()
-    ? { revisar: `Por visar (${registros.filter((r) => r.Estado === 'Enviado').length})`, subir: `Por subir (${subir.length})`, todos: 'Todos', mios: 'Míos' }
+    ? { revisar: `Por visar (${registros.filter((r) => r.Estado === 'Enviado').length})`, ...(USA_SP ? { subir: `Por subir (${subir.length})` } : {}), todos: 'Todos', mios: 'Míos' }
     : { mios: 'Míos', pendientes: `Borradores (${mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador').length})` };
   const f = segs[filtro] ? filtro : Object.keys(segs)[0];
   const rows = (f === 'revisar' ? registros.filter((r) => r.Estado === 'Enviado')
@@ -684,7 +685,7 @@ async function viewRegistros(v, filtro) {
   const tipos = Object.keys(FORMS).filter(puedeLlenar);
   const nPend = (await porEnviar()).length;
   const vacio = { revisar: ['Nada por visar', DEMO ? '' : 'Usa ↻ para traer lo último que llegó a tu Google Drive.'], subir: ['Nada por subir', 'Todo lo visado ya está en SharePoint.'] }[f]
-    || ['Sin registros', tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : 'Aquí aparecerán los registros visados y subidos a SharePoint.'];
+    || ['Sin registros', tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : `Aquí aparecerán los registros ${txtVisado()}.`];
   v.innerHTML = `<div class="head"><h1>Registros</h1><span class="hbtns">${!DEMO && !soloConsulta() ? `<button class="round sec" id="actualizar" aria-label="Actualizar desde Google Drive">${ic('sync')}</button>` : ''}${tipos.length ? `<button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button>` : ''}</span></div>
     ${avisoPendientes(nPend)}
     <div class="seg" role="tablist">${Object.entries(segs).map(([k, l]) => `<button role="tab" aria-selected="${k === f}" data-go="#/registros?f=${k}">${l}</button>`).join('')}</div>
@@ -873,7 +874,7 @@ async function subirSharePoint(regs) {
 // Vista de lectura / impresión, con visado y subida a SharePoint del administrador.
 async function viewDoc(v, reg, ctx) {
   const revisable = esAdmin() && reg.Estado === 'Enviado' && (DEMO || !!reg._drive);
-  const subible = esAdmin() && reg.Estado === 'Aprobado' && !reg.SharePoint;
+  const subible = USA_SP && esAdmin() && reg.Estado === 'Aprobado' && !reg.SharePoint;
   const avisable = esAdmin() && reg.Estado === 'Observado' && reg.AutorCorreo !== SES.correo && !DEMO;
   const propioEnviado = esTerreno() && reg.AutorCorreo === SES.correo && reg.Estado === 'Enviado';
   const estadoEnvio = propioEnviado && !DEMO ? (reg._drive
@@ -1013,6 +1014,7 @@ async function viewAjustes(v) {
       ${filaKV('Registros', registros.filter((r) => r.Estado !== 'Borrador').length)}${filaKV('Última actualización', fechaHora(await store.meta('lastSync')))}</div>
     ${DEMO ? '' : `<div style="margin-top:10px"><button class="btn" id="syncNow">${ic('sync', 20)} Actualizar ahora</button></div>`}
     <p class="foot">Todo lo que se firma en terreno llega a la carpeta «Obras DRF» de tu Google Drive (un subcarpeta por registro, con su JSON, fotos y firmas).</p>
+    ${USA_SP ? `
     <h3>SharePoint de proyectos</h3>
     <div class="group kv">${filaKV('Sitio', DEMO ? 'Simulado (modo demo)' : HAY_KOZAN ? esc(CONFIG.SITE_HOST + CONFIG.SITE_PATH) : 'Sin configurar')}
       ${filaKV('Carpeta', esc(CONFIG.CARPETA))}${filaKV('Cuenta Microsoft', DEMO ? '—' : ms ? esc(ms.username) : 'No conectada')}
@@ -1020,6 +1022,8 @@ async function viewAjustes(v) {
     ${!DEMO && HAY_KOZAN ? `<div style="margin-top:10px">${ms ? '<button class="btn sec" id="msOut">Desconectar cuenta Microsoft</button>' : '<button class="btn sec" id="msIn">Conectar cuenta Microsoft</button>'}
       <button class="btn sec" id="prov">Revisar / crear listas</button></div><div class="log" id="provLog" hidden></div>` : ''}
     <p class="foot">Al subir, cada registro visado deja su PDF, fotos y firmas en ${esc(CONFIG.CARPETA)}/&lt;tipo&gt;/&lt;código&gt;, y una fila en las listas ${esc(CONFIG.LIST_PREFIX)}Obras, ${esc(CONFIG.LIST_PREFIX)}Partidas y ${esc(CONFIG.LIST_PREFIX)}Registros (base del panel y de Power BI).</p>
+` : `<h3>SharePoint de proyectos</h3>
+    <p class="foot">Por ahora no se usa: lo visado queda en tu Google Drive (carpeta «Obras DRF») y cuenta en el panel. Se activa con SHAREPOINT: true en config.js cuando Informática entregue los datos.</p>`}
     <h3>Usuarios y perfiles</h3>
     ${usuarios.length ? `<div class="group">${usuarios.map((u) => `<button class="row" data-user="${esc(u.Uid)}"><div class="main"><div class="t">${esc(u.Title)}</div>
       <div class="s">${esc(u.Correo)}</div></div><span class="badge ${u.Activo === false ? 'bad' : ''}">${u.Activo === false ? 'Inactivo' : esc(u.Rol)}</span></button>`).join('')}</div>`
@@ -1059,14 +1063,14 @@ function viewLogin(v) {
     <b style="font-size:1.75rem">Obras DRF</b>Protocolos, reportes de operación y avance de obras.<br><br>
     <button class="btn" id="loginG">${GOOGLE_G} Entrar con Google</button>
     <p class="foot">Administrador, supervisores, topógrafos y operadores, con su correo personal o de empresa.</p>
-    ${HAY_KOZAN || DEMO ? `<button class="btn sec" id="loginM">Solo consulta · cuenta Kozan (Microsoft)</button>
+    ${USA_SP ? `<button class="btn sec" id="loginM">Solo consulta · cuenta Kozan (Microsoft)</button>
       <p class="foot">Ver lo publicado en SharePoint.</p>` : ''}
     <p class="foot" style="margin-top:18px"><a href="privacidad.html">Política de privacidad</a> · <a href="terminos.html">Términos de uso</a></p>
     ${DEMO ? `<div class="notice" style="text-align:left">${ic('info', 20)}<div><b>Modo demo.</b> La app aún no está conectada a Google: estos botones entran sin contraseña y los datos quedan solo en este equipo.</div></div>` : ''}</div>`;
   if (DEMO) {
     const entrar = (m, rol) => { ls.set('demoSesion', m); try { localStorage.setItem('demoRol', rol); } catch {} SES = null; route(); };
     $('#loginG').onclick = () => entrar('google', '');
-    $('#loginM').onclick = () => entrar('kozan', '');
+    $('#loginM') && ($('#loginM').onclick = () => entrar('kozan', ''));
     return;
   }
   $('#loginM') && ($('#loginM').onclick = () => { ls.set('modo', 'kozan'); auth.login(); });
@@ -1168,7 +1172,7 @@ function viewAutorizacion(v) {
     <div class="group kv">${filaKV('Tu cuenta', 'Nombre y correo, para identificarte')}
       ${terreno ? filaKV('Tus registros', 'Formularios, fotos, firma y adjuntos que envías') + filaKV('Ubicación', 'Solo en las fotos, si lo permites (se pregunta aparte)') + filaKV('Diagnóstico', 'Reportes de error, versión de la app y tipo de equipo')
         : filaKV('Consulta', 'Solo ves lo publicado en SharePoint')}</div>
-    <p class="foot">${terreno ? `Se guarda en el Google Drive del administrador del proyecto y, una vez visado, en el SharePoint de ${esc(PROYECTO.empresa)}. Tu firma en la app vale lo mismo que en el protocolo en papel.`
+    <p class="foot">${terreno ? `Se guarda en el Google Drive del administrador del proyecto${USA_SP ? `, y una vez visado en el SharePoint de ${esc(PROYECTO.empresa)}` : ''}. Tu firma en la app vale lo mismo que en el protocolo en papel.`
       : 'Tu cuenta Kozan se usa solo para leer lo publicado.'} No se vende ni se usa con fines publicitarios.</p>
     <div class="group" style="margin-top:14px"><label class="row" style="cursor:pointer;align-items:flex-start">
       <input type="checkbox" id="acepto" style="width:22px;height:22px;flex:none;margin:2px 0 0">
@@ -1217,7 +1221,7 @@ async function viewMisDatos(v) {
     <h3>Tus registros</h3>
     <div class="group kv">${filaKV('Registros', regs.length)}${Object.entries(porEstado).map(([k, n]) => filaKV('· ' + k, n)).join('')}
       ${filaKV('Fotos', `${inv.fotos}${inv.fotos ? ` (${inv.gps} con ubicación)` : ''}`)}${filaKV('Firmas', inv.firmas)}${filaKV('Adjuntos', inv.adjuntos)}</div>
-    <p class="foot">Registros a tu nombre que tiene este equipo. Lo enviado queda en el Google Drive del administrador y, una vez visado, en SharePoint.</p>` : ''}
+    <p class="foot">Registros a tu nombre que tiene este equipo. Lo enviado queda en el Google Drive del administrador${USA_SP ? ' y, una vez visado, en SharePoint' : ''}.</p>` : ''}
     <h3>En este equipo</h3>
     <div class="group kv">${modo() === 'google' ? filaKV('Por enviar', pend) : ''}${filaKV('Archivos guardados', `${arch.n} (${mb(arch.bytes)})`)}
       ${google ? filaKV('Sesión de Google', tk?.exp > Date.now() ? 'Activa hasta las ' + new Date(tk.exp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : 'Vencida') : ''}
@@ -1297,7 +1301,7 @@ async function viewInventario(v) {
       ${filaKV('Fotos', 'Con ubicación GPS si el autor lo permite')}${filaKV('Firmas', 'Imagen de la firma en pantalla')}
       ${filaKV('Adjuntos', 'Archivos de los transmittal')}${filaKV('Autorizaciones', 'Correo, versiones y fecha de aceptación o retiro')}
       ${filaKV('Diagnóstico', 'Errores de la app, versión y equipo de cada persona (ver Monitoreo)')}</div>
-    <p class="foot">Dónde: Google Drive del administrador (Obras DRF) y, lo visado, SharePoint de ${esc(PROYECTO.empresa)}. Detalle en la <a href="privacidad.html">política de privacidad</a>.</p>
+    <p class="foot">Dónde: Google Drive del administrador (Obras DRF)${USA_SP ? `, y lo visado en el SharePoint de ${esc(PROYECTO.empresa)}` : ''}. Detalle en la <a href="privacidad.html">política de privacidad</a>.</p>
     <h3>Por persona</h3>
     <div class="group">${personas.map((p) => `<div class="row"><div class="main"><div class="t">${esc(p.nombre || p.correo)}${p.activo ? '' : ' <span class="badge bad">Inactivo</span>'}</div>
       <div class="s">${esc(p.correo)} · ${esc(p.rol || 'Sin perfil')}</div>
@@ -1386,7 +1390,7 @@ async function viewMonitoreo(v) {
       ${filaKV('Buzón en esta sesión', t.n ? `${t.n} llamadas · mediana ${t.mediana ?? '—'} ms · máx. ${t.max ?? '—'} ms${t.fallas ? ` · ${t.fallas} fallidas` : ''}` : 'Sin llamadas')}
       ${filaKV('Última sincronización', fechaHora(await store.meta('lastSync')))}
       ${filaKV('Por enviar (este equipo)', pend)}${filaKV('Errores por enviar (este equipo)', local.length)}
-      ${m ? filaKV('Por visar', m.buzon.porVisar) + filaKV('Visados por subir a SharePoint', m.buzon.porSubir) : ''}</div>
+      ${m ? filaKV('Por visar', m.buzon.porVisar) + (USA_SP ? filaKV('Visados por subir a SharePoint', m.buzon.porSubir) : '') : ''}</div>
     ${!polOk ? '<p class="foot">El buzón exige otra versión de las políticas que la app: vuelve a implementar buzon/Code.gs.</p>' : ''}
     <h3>Equipos</h3>
     ${accesos.length ? `<div class="group">${accesos.map((a) => `<div class="row"><div class="main"><div class="t">${esc(a.correo)}</div>
