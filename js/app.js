@@ -962,7 +962,7 @@ async function ajustesTerreno(v) {
       <button class="btn danger" id="logout" ${pend ? 'disabled' : ''}>Cerrar sesión</button></div>
     <p class="foot">${pend ? 'Envía los pendientes antes de cerrar sesión. ' : ''}Lo que firmas queda guardado en el Google Drive del administrador del proyecto; tu cuenta solo se usa para identificarte.</p>
     <h3>Acerca de</h3>
-    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>
+    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>
     <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
   $('#enviarYa') && ($('#enviarYa').onclick = () => enviarPendientes(true));
   $('#syncNow').onclick = () => trySync(true);
@@ -979,7 +979,7 @@ async function ajustesConsulta(v) {
     <div class="group kv">${filaKV('Sitio', DEMO ? 'Modo demo' : esc(CONFIG.SITE_HOST + CONFIG.SITE_PATH))}${filaKV('Última sincronización', fechaHora(await store.meta('lastSync')))}</div>
     ${DEMO ? '' : `<div style="margin-top:10px"><button class="btn" id="syncNow">${ic('sync', 20)} Sincronizar ahora</button></div>`}
     <h3>Acerca de</h3>
-    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>
+    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>
     <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
   $('#logout').onclick = cerrarSesion;
   $('#syncNow') && ($('#syncNow').onclick = () => trySync(true));
@@ -1021,7 +1021,7 @@ async function viewAjustes(v) {
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
     <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
     <h3>Acerca de</h3>
-    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}</div>
+    <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>
     <p class="foot">© 2026 ${esc(PROYECTO.empresa)}. Todos los derechos reservados.</p>`;
   $('#demoRol') && ($('#demoRol').onchange = async (e) => {
     try { localStorage.setItem('demoRol', e.target.value); } catch {}
@@ -1051,7 +1051,7 @@ function viewLogin(v) {
     <p class="foot">Administrador, supervisores, topógrafos y operadores, con su correo personal o de empresa.</p>
     ${HAY_KOZAN || DEMO ? `<button class="btn sec" id="loginM">Solo consulta · cuenta Kozan (Microsoft)</button>
       <p class="foot">Ver lo publicado en SharePoint.</p>` : ''}
-    <p class="foot" style="margin-top:18px"><a href="privacidad.html">Política de privacidad</a></p>
+    <p class="foot" style="margin-top:18px"><a href="privacidad.html">Política de privacidad</a> · <a href="terminos.html">Términos de uso</a></p>
     ${DEMO ? `<div class="notice" style="text-align:left">${ic('info', 20)}<div><b>Modo demo.</b> La app aún no está conectada a Google: estos botones entran sin contraseña y los datos quedan solo en este equipo.</div></div>` : ''}</div>`;
   if (DEMO) {
     const entrar = (m, rol) => { ls.set('demoSesion', m); try { localStorage.setItem('demoRol', rol); } catch {} SES = null; route(); };
