@@ -8,6 +8,12 @@ const CANAL_RESTITUCION = {
     + '- Geotextil\n- Lámina de HDPE e=1 mm\n- Mampostería de piedra con mortero de hormigón e=20 cm\n'
     + '- Bocatomas dispuestas en terreno natural revestidas con empedrado y hormigón sobre pretiles compactados',
 };
+const PISCINA = {
+  Descripcion: 'Piscina operacional excavada en terreno, de sección troncopiramidal, impermeabilizada.',
+  Materialidad: 'Excavación masiva con excavadora y perfilado de taludes; rellenos compactados en capas ≤ 30 cm (Proctor ≥ 90 %); '
+    + 'revestimiento de geomembrana HDPE e=1 mm anclada en zanja perimetral; insertos de tubería HDPE unidos a la geomembrana.',
+  Geometria: 'Troncopiramidal\nCoronamiento: 50 × 30 m\nFondo: 36 × 16 m\nh: 3,5 m\nTalud H/V: 2/1\nV: 3.515 m³',
+};
 const MAMPOSTERIA = 'Canal excavado en terreno con revestimiento de mampostería de piedra con mortero de hormigón.';
 
 export const UBICACION = 'Depósito de relaves filtrados (DRF)';
@@ -17,9 +23,9 @@ export const UBICACION = 'Depósito de relaves filtrados (DRF)';
 // RD-1 y DE tendrán además su fase definitiva sobre la misma obra (PAS 155 y 157).
 // El canal de contorno CC-1 es definitivo y ya está construido.
 const AMBAS = 'Temprana y definitiva';
-export const FASES_OBRA = ['Temprana', 'Definitiva', AMBAS];
+export const FASES_OBRA = ['Temprana', 'Definitiva', AMBAS, 'Piscina'];
 const FASE_OBRA = { 'CR-1': 'Definitiva', 'CR-2': 'Definitiva', 'CR-3': 'Definitiva', VE: 'Definitiva', 'CD-1': 'Definitiva',
-  'CC-1': 'Definitiva', 'RD-1': AMBAS, DE: AMBAS, 'CS-1': 'Temprana', 'CS-2': 'Temprana', CE: 'Temprana' };
+  'CC-1': 'Definitiva', 'RD-1': AMBAS, DE: AMBAS, 'CS-1': 'Temprana', 'CS-2': 'Temprana', CE: 'Temprana', PA: 'Piscina', PB: 'Piscina' };
 
 export const OBRAS_PROYECTO = [
   { Codigo: 'CR-1', Title: 'Canal de restitución 1', ...CANAL_RESTITUCION,
@@ -55,7 +61,20 @@ export const OBRAS_PROYECTO = [
     Geometria: 'Cuenco rectangular\nLi: 8 m · Ai: 6 m\nLe: 24 m · Ae: 18 m\nh: 2 m\nH/V: 3/1' },
   // Sin descripción en la planilla de origen.
   { Codigo: 'CE', Title: 'Canal de encauzamiento' },
+  // Piscinas operacionales del DRF (proyecto Piscina Operacional, Dirección de Proyectos).
+  // Diseño tipo de 3070 Cálculo Piscina de Emergencia DRF (mayo 2023) y EETT de piscina con HDPE.
+  { Codigo: 'PA', Title: 'Piscina A', ...PISCINA },
+  { Codigo: 'PB', Title: 'Piscina B', ...PISCINA },
 ].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada', Peso: 0, Fase: FASE_OBRA[o.Codigo] }));
+
+// Piscinas: peso de cada una en el grupo «Piscinas» y sus etapas (fase Piscina, Uids '<obra>-pN', Item 'PN').
+// Pesos de etapa preliminares (sin presupuesto): replanteo y recepción fijos, el resto según el alcance de las EETT.
+// Piscina A en ejecución (excavación en curso, informe de estatus de agosto 2026); Piscina B en proceso competitivo.
+export const PESO_PIS = { PA: 50, PB: 50 };
+const ETAPAS_PISCINA = [['Replanteo y control topográfico', 5], ['Escarpe y excavación masiva', 30],
+  ['Perfilado de taludes y sello de fondo', 15], ['Rellenos y compactación (Proctor ≥ 90 %)', 10], ['Zanja de anclaje perimetral', 5],
+  ['Geotextil y geomembrana HDPE 1 mm', 25], ['Insertos y tuberías HDPE', 5], ['Terminaciones, as-built y recepción', 5]];
+const PLAN_PIS = { PA: { Estado: 'En ejecución', etapas: ETAPAS_PISCINA }, PB: { etapas: ETAPAS_PISCINA } };
 
 // Pesos (en obras tempranas) y etapas de 07.SEGUIMIENTO\Control_Avance_Diario_Protocolos_LJ_Obras_Fluviales_RevB.xlsx
 // (hojas Configuracion y Registro_Diario). Pesos en %; AvanceBase = avance acumulado
@@ -110,6 +129,16 @@ for (const o of OBRAS_PROYECTO) {
   if (plan.Estado) o.Estado = plan.Estado;
   plan.etapas.forEach(([Title, Peso, AvanceBase = 0], i) => ETAPAS_PROYECTO.push({
     Uid: `${o.Uid}-d${i + 1}`, ObraUid: o.Uid, Item: `D${i + 1}`, Title, Peso, AvanceBase, Fase: 'Definitiva',
+    Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
+  }));
+}
+for (const o of OBRAS_PROYECTO) {
+  if (PESO_PIS[o.Codigo]) o.PesoPis = PESO_PIS[o.Codigo];
+  const plan = PLAN_PIS[o.Codigo];
+  if (!plan) continue;
+  if (plan.Estado) o.Estado = plan.Estado;
+  plan.etapas.forEach(([Title, Peso, AvanceBase = 0], i) => ETAPAS_PROYECTO.push({
+    Uid: `${o.Uid}-p${i + 1}`, ObraUid: o.Uid, Item: `P${i + 1}`, Title, Peso, AvanceBase, Fase: 'Piscina',
     Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
   }));
 }

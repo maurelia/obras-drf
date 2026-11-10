@@ -22,6 +22,16 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.3.0 (10-11-2026)
+
+- Piscinas operacionales **Piscina A (PA)** y **Piscina B (PB)** del DRF como obras, con 8 etapas cada una
+  (fase `Piscina`, Uids `of-pa-p1…p8`): replanteo 5, excavación 30, perfilado de taludes y sello 15, rellenos y
+  compactación 10, zanja de anclaje 5, geotextil + HDPE 25, insertos HDPE 5, terminaciones y recepción 5 (pesos
+  preliminares). Geometría tipo: 50 × 30 m arriba, 36 × 16 m fondo, h 3,5 m, talud 2:1, 3.515 m³.
+- Aparecen en todos los protocolos que piden obra o etapa (PDA, RCM, PTT, TRT, PND) y el PDA suma su avance.
+- Tercer grupo en el panel: «Piscinas» (peso por obra `PesoPis`, 50 / 50), aparte de obras tempranas y definitivas.
+- Para cargarlas: Obras › «Cargar obras del proyecto» (agrega solo lo que falta en el buzón).
+
 ## Versión 1.2.2 (08-11-2026)
 
 - Humectación (PHU) impresa como su original: título en barra azul 1F3864, secciones en barras naranjas E8501E,

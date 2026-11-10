@@ -358,6 +358,7 @@ const OBRA_FIELDS = [
   { name: 'Fase', label: 'Fase', type: 'select', options: FASES_OBRA },
   { name: 'Peso', label: 'Peso en obras tempranas (%)', type: 'number' },
   { name: 'PesoDef', label: 'Peso en obras definitivas (%)', type: 'number' },
+  { name: 'PesoPis', label: 'Peso en piscinas (%)', type: 'number' },
   { name: 'Mandante', label: 'Mandante' },
   { name: 'Ubicacion', label: 'Ubicación' },
   { name: 'Estado', label: 'Estado', type: 'select', options: ESTADOS_OBRA },
@@ -404,7 +405,7 @@ function editPartida(obraUid, p = {}) {
   openForm({
     title: p.Uid ? 'Editar etapa' : 'Nueva etapa',
     fields: PARTIDA_FIELDS,
-    values: { Estado: 'Pendiente', Fase: p.Fase || (faseObraUid(obraUid) === 'Definitiva' ? 'Definitiva' : 'Temprana'), ...p },
+    values: { Estado: 'Pendiente', Fase: p.Fase || (FASES.includes(faseObraUid(obraUid)) ? faseObraUid(obraUid) : 'Temprana'), ...p },
     onSave: async (d) => {
       await persistir('partidas', [{ ...sinPrivados(p), ...d, ObraUid: obraUid, Uid: p.Uid || uid() }]);
       route();
@@ -426,8 +427,8 @@ async function cargarCatalogo() {
   for (const o of OBRAS_PROYECTO) {
     const ex = porCodigo[o.Codigo];
     if (!ex) nuevasObras.push(o);
-    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase) || (ex.PesoDef == null && o.PesoDef)) {
-      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase, PesoDef: ex.PesoDef ?? o.PesoDef });
+    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase) || (ex.PesoDef == null && o.PesoDef) || (ex.PesoPis == null && o.PesoPis)) {
+      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase, PesoDef: ex.PesoDef ?? o.PesoDef, PesoPis: ex.PesoPis ?? o.PesoPis });
     }
   }
   const etapasHay = remoto ? remoto.partidas : await store.all('partidas');
@@ -453,16 +454,16 @@ async function cargarCatalogo() {
 
 // ---------- Vistas ----------
 
-// Fase que muestra el panel (obras tempranas / definitivas); se recuerda en este equipo.
-let faseVista = (() => { try { return localStorage.getItem('faseVista') === 'Definitiva' ? 'Definitiva' : 'Temprana'; } catch { return 'Temprana'; } })();
+// Fase que muestra el panel (obras tempranas / definitivas / piscinas); se recuerda en este equipo.
+let faseVista = (() => { try { const f = localStorage.getItem('faseVista'); return FASES.includes(f) ? f : 'Temprana'; } catch { return 'Temprana'; } })();
 
 // Dashboard: avance por fase, curva acumulada, avance por obra y actividad de la semana.
 async function viewInicio(v) {
   setNav('Avance');
   const { obras, partidas, registros, filas, porEtapa } = await datos();
-  const fase = faseVista, otra = fase === 'Temprana' ? 'Definitiva' : 'Temprana';
+  const fase = faseVista, otras = FASES.filter((f) => f !== fase);
   const glob = avanceGlobal(obras, partidas, porEtapa, fase);
-  const globOtra = avanceGlobal(obras, partidas, porEtapa, otra);
+  const txtOtras = otras.map((f) => `${FASE_PLURAL[f].toLowerCase()}: ${fmtPct(avanceGlobal(obras, partidas, porEtapa, f))}`).join(' · ');
   const serie = serieGlobal(obras, partidas, filas, FECHA_BASE, fase);
   const hace7 = avanceGlobal(obras, partidas, avanceEtapas(partidas, filas, addDays(today(), -7)), fase);
   const sem = lunes(today());
@@ -491,16 +492,16 @@ async function viewInicio(v) {
 
   const nPend = (await porEnviar()).length;
   const delta = glob != null && hace7 != null ? glob - hace7 : null;
-  const sinDef = fase === 'Definitiva' && glob == null;
+  const sinDef = fase !== 'Temprana' && glob == null;
   v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${avisoPendientes(nPend)}
     <div class="seg" role="tablist" aria-label="Fase">${FASES.map((f) => `<button role="tab" aria-selected="${f === fase}" data-fase="${f}">${FASE_PLURAL[f]}</button>`).join('')}</div>
     <div class="group hero"><div class="hl">Avance físico · ${FASE_PLURAL[fase].toLowerCase()}</div>
       <div class="hv">${fmtPct(glob)}</div>
       <div class="bar big" role="img" aria-label="Avance ${FASE_PLURAL[fase].toLowerCase()} ${fmtPct(glob)}"><i style="width:${glob ?? 0}%"></i></div>
-      <div class="hs">${sinDef ? 'Las obras definitivas aún no tienen pesos ni etapas: se asignan en cada obra (peso en obras definitivas) y en sus etapas (fase Definitiva).'
+      <div class="hs">${sinDef ? `Las ${FASE_PLURAL[fase].toLowerCase()} aún no tienen pesos ni etapas: se asignan en cada obra (peso en ${FASE_PLURAL[fase].toLowerCase()}) y en sus etapas (fase ${fase}). Si faltan, usa «Cargar obras del proyecto» en Obras.`
         : `${delta ? `${delta > 0 ? '+' : ''}${delta.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts en los últimos 7 días` : 'Sin variación en los últimos 7 días'}
         · ponderado por peso de obra y etapa dentro de la fase`}
-        · ${FASE_PLURAL[otra].toLowerCase()}: ${fmtPct(globOtra)}</div></div>
+        · ${txtOtras}</div></div>
 
     <div class="tiles">
       ${tile('Protocolos diarios', deSemana.filter((r) => r.Tipo === 'PDA').length, 'esta semana')}
@@ -512,7 +513,7 @@ async function viewInicio(v) {
       <button class="btn" data-go="#/registros?f=subir" style="margin-top:8px">Revisar y subir</button></div></div>` : ''}
 
     <h3>Avance acumulado · ${FASE_PLURAL[fase].toLowerCase()}</h3>
-    <div class="group chartbox">${sinDef ? '<p class="foot" style="padding:16px">Sin obras definitivas con peso todavía.</p>' : chartSerie(serie)}</div>
+    <div class="group chartbox">${sinDef ? `<p class="foot" style="padding:16px">Sin ${FASE_PLURAL[fase].toLowerCase()} con peso todavía.</p>` : chartSerie(serie)}</div>
     <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${FASE_PLURAL[fase].toLowerCase()}</th></tr></thead>
       <tbody>${serie.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td></tr>`).join('')}</tbody></table></details>
     <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman` : 'Suman'} los protocolos diarios ${txtVisado()}.</p>
@@ -592,7 +593,7 @@ async function viewObras(v) {
         const av = avanceObra(o.Uid, partidas, porEtapa, f);
         return `${fs.length > 1 ? `<div class="s">${f}: ${fmtPct(av, 0)}</div>` : ''}<div class="bar" role="img" aria-label="Avance ${f.toLowerCase()} ${Math.round(av)}%"><i style="width:${av}%"></i></div>`;
       }).join('');
-      const pesos = [['temp.', o.Peso], ['def.', o.PesoDef]].filter(([, x]) => Number(x)).map(([k, x]) => `peso ${k} ${fmtN(x)} %`).join(' · ');
+      const pesos = [['temp.', o.Peso], ['def.', o.PesoDef], ['pisc.', o.PesoPis]].filter(([, x]) => Number(x)).map(([k, x]) => `peso ${k} ${fmtN(x)} %`).join(' · ');
       return `<button class="row" data-go="#/obra/${esc(o.Uid)}">
         <div class="main"><div class="t">${esc(o.Title)}${pendIcon(o)}</div>
         <div class="s">${esc(o.Codigo)}${o.Fase ? ` · ${esc(o.Fase)}` : ''}${pesos ? ` · ${pesos}` : ''} · ${ps.length} ${ps.length === 1 ? 'etapa' : 'etapas'}</div>
@@ -645,6 +646,7 @@ async function viewObra(v, obraUid) {
       ${o.Fase ? `<div class="row"><span class="k">Fase</span><span class="v">${esc(o.Fase)}</span></div>` : ''}
       ${Number(o.Peso) ? `<div class="row"><span class="k">Peso en obras tempranas</span><span class="v">${fmtN(o.Peso)} %</span></div>` : ''}
       ${Number(o.PesoDef) ? `<div class="row"><span class="k">Peso en obras definitivas</span><span class="v">${fmtN(o.PesoDef)} %</span></div>` : ''}
+      ${Number(o.PesoPis) ? `<div class="row"><span class="k">Peso en piscinas</span><span class="v">${fmtN(o.PesoPis)} %</span></div>` : ''}
       ${o.Mandante ? `<div class="row"><span class="k">Mandante</span><span class="v">${esc(o.Mandante)}</span></div>` : ''}
       ${o.Ubicacion ? `<div class="row"><span class="k">Ubicación</span><span class="v">${esc(o.Ubicacion)}</span></div>` : ''}
       ${o.FechaInicio || o.FechaTermino ? `<div class="row"><span class="k">Plazo</span><span class="v">${fmtDate(o.FechaInicio)} – ${fmtDate(o.FechaTermino)}</span></div>` : ''}

@@ -6,10 +6,12 @@
 // y definitivas (sistema de desvío de aguas naturales del DRF, PAS 155 y 157). La fase va en
 // cada etapa: RD-1, DE y CC-1 tienen etapas tempranas y luego definitivas sobre la misma obra.
 // Cada obra tiene un peso por fase (Peso = tempranas, PesoDef = definitivas).
-export const FASES = ['Temprana', 'Definitiva'];
-export const FASE_PLURAL = { Temprana: 'Obras tempranas', Definitiva: 'Obras definitivas' };
-export const faseDe = (p) => (p.Fase === 'Definitiva' ? 'Definitiva' : 'Temprana');
-export const pesoObra = (o, fase) => Number(fase === 'Definitiva' ? o.PesoDef : o.Peso) || 0;
+// Las piscinas operacionales A y B del DRF son un tercer grupo, con su propio avance (PesoPis).
+export const FASES = ['Temprana', 'Definitiva', 'Piscina'];
+export const FASE_PLURAL = { Temprana: 'Obras tempranas', Definitiva: 'Obras definitivas', Piscina: 'Piscinas' };
+export const faseDe = (p) => (FASES.includes(p.Fase) ? p.Fase : 'Temprana');
+const CAMPO_PESO = { Temprana: 'Peso', Definitiva: 'PesoDef', Piscina: 'PesoPis' };
+export const pesoObra = (o, fase) => Number(o[CAMPO_PESO[fase] || 'Peso']) || 0;
 export const fasesDeObra = (obraUid, partidas) => FASES.filter((f) => partidas.some((p) => p.ObraUid === obraUid && faseDe(p) === f));
 
 const CUENTA = new Set(['Aprobado']); // solo lo aprobado, que es lo que se sube a SharePoint

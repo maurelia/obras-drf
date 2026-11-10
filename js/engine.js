@@ -40,7 +40,7 @@ function optionsFor(c, ctx) {
   return (c.options || []).map((o) => [o, o]);
 }
 // Las etapas de obras definitivas se marcan (RD-1, DE y CC-1 tienen etapas de las dos fases).
-const defi = (p) => (p.Fase === 'Definitiva' ? ' (definitiva)' : '');
+const defi = (p) => (p.Fase === 'Definitiva' ? ' (definitiva)' : '');  // las piscinas tienen código propio (PA, PB)
 function etapaOptions(ctx, v) {
   const byObra = {};
   for (const p of ctx.partidas) (byObra[p.ObraUid] ||= []).push(p);
