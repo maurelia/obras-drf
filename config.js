@@ -24,7 +24,7 @@ export const CONFIG = {
   // Versiones de privacidad.html y terminos.html. Al cambiar una, súbela aquí y en
   // buzon/Code.gs: la app vuelve a pedir la aceptación a todos.
   POLITICAS: { privacidad: 3, terminos: 1 },
-  VERSION: '1.3.0',
+  VERSION: '1.4.0',
 };
 
 export const PROYECTO = {
@@ -34,6 +34,15 @@ export const PROYECTO = {
   empresa: 'S.C.M. Atacama Kozan',
   contacto: 'jc.maurelia@gmail.com', // administrador: privacidad y términos
 };
+
+// Proyectos de la app (CODIGOS-PROYECTOS-DOCUMENTOS-CECO.xlsx). Cada uno tiene sus obras,
+// su panel de avance y sus códigos de registro (PDA-OF-001, PDA-PO-001). La sigla va en
+// los códigos; buzon/Code.gs tiene la misma lista.
+export const PROYECTOS = {
+  OF: { sigla: 'OF', nombre: 'Obras Fluviales DRF', corto: 'Obras Fluviales', codigo: 'DRF-OF-2509-06', ceco: '144004 Depositación DRF' },
+  PO: { sigla: 'PO', nombre: 'Piscina Operacional DRF', corto: 'Piscina Operacional', codigo: 'DRF-PO-2401-05', ceco: '144002 Espesamiento DRF' },
+};
+export const proyectoDe = (r) => PROYECTOS[r?.Proyecto] || PROYECTOS.OF;
 
 export const HAY_KOZAN = !!CONFIG.CLIENT_ID;
 export const USA_SP = CONFIG.SHAREPOINT && (HAY_KOZAN || !CONFIG.GOOGLE_CLIENT_ID);

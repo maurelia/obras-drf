@@ -61,13 +61,15 @@ export const OBRAS_PROYECTO = [
     Geometria: 'Cuenco rectangular\nLi: 8 m · Ai: 6 m\nLe: 24 m · Ae: 18 m\nh: 2 m\nH/V: 3/1' },
   // Sin descripción en la planilla de origen.
   { Codigo: 'CE', Title: 'Canal de encauzamiento' },
-  // Piscinas operacionales del DRF (proyecto Piscina Operacional, Dirección de Proyectos).
+  // Piscinas del proyecto Piscina Operacional DRF (DRF-PO-2401-05): proyecto aparte, con su propio panel.
+  // Conservan el Uid 'of-pa' / 'of-pb' de la versión 1.3.0 (ya cargadas en el buzón).
   // Diseño tipo de 3070 Cálculo Piscina de Emergencia DRF (mayo 2023) y EETT de piscina con HDPE.
   { Codigo: 'PA', Title: 'Piscina A', ...PISCINA },
   { Codigo: 'PB', Title: 'Piscina B', ...PISCINA },
-].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada', Peso: 0, Fase: FASE_OBRA[o.Codigo] }));
+].map((o) => ({ ...o, Uid: 'of-' + o.Codigo.toLowerCase(), Ubicacion: UBICACION, Estado: 'Planificada', Peso: 0, Fase: FASE_OBRA[o.Codigo],
+  Proyecto: FASE_OBRA[o.Codigo] === 'Piscina' ? 'PO' : 'OF' }));
 
-// Piscinas: peso de cada una en el grupo «Piscinas» y sus etapas (fase Piscina, Uids '<obra>-pN', Item 'PN').
+// Piscinas: peso de cada una en el avance del proyecto Piscina Operacional y sus etapas (fase Piscina, Uids '<obra>-pN', Item 'PN').
 // Pesos de etapa preliminares (sin presupuesto): replanteo y recepción fijos, el resto según el alcance de las EETT.
 // Piscina A en ejecución (excavación en curso, informe de estatus de agosto 2026); Piscina B en proceso competitivo.
 export const PESO_PIS = { PA: 50, PB: 50 };

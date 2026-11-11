@@ -16,8 +16,11 @@
  * script es siempre administrador; los demás perfiles se asignan en la app.
  */
 const CLIENT_ID = '811261991852-gvh71bipgm609q6ucfcl4cjju8nmkgk9.apps.googleusercontent.com';                 // = GOOGLE_CLIENT_ID de config.js
-const PROYECTO = 'DRF-OF-2509-06';
-const SIGLA = 'OF';                   // códigos de registro: PDA-OF-001
+const PROYECTO = 'DRF-OF-2509-06 / DRF-PO-2401-05';
+// Proyectos (= PROYECTOS de config.js). La sigla va en los códigos de registro: PDA-OF-001, PDA-PO-001;
+// cada proyecto lleva su propio correlativo por formato. Registro sin Proyecto = Obras Fluviales.
+const SIGLAS = ['OF', 'PO'];
+const siglaDe_ = (r) => (SIGLAS.indexOf(r.Proyecto) >= 0 ? r.Proyecto : 'OF');
 const RAIZ = 'Obras DRF';
 const DATOS = 'obrasdrf_datos.json';
 // Versiones de privacidad.html y terminos.html (= CONFIG.POLITICAS de config.js).
@@ -29,10 +32,10 @@ const MAX_EVENTOS = 1000; // se conservan los más recientes
 // Qué formatos puede enviar cada perfil (igual que js/forms.js).
 const PERMISOS = {
   'Supervisor de terraza': ['PDA', 'RCM', 'PHU'],
-  'Topógrafo': ['PDA', 'PCT', 'PTT', 'TRT', 'PND'],
+  'Topógrafo': ['PDA', 'PCT', 'PCP', 'PTT', 'TRT', 'PND'],
   'Operador': ['PDA', 'RCM', 'PHU'],
 };
-const TIPOS = ['PDA', 'PCT', 'RCM', 'PTT', 'TRT', 'PRV', 'PHU', 'PND'];
+const TIPOS = ['PDA', 'PCT', 'PCP', 'RCM', 'PTT', 'TRT', 'PRV', 'PHU', 'PND'];
 
 function doGet() {
   return ContentService.createTextOutput('Obras DRF · buzón activo (' + PROYECTO + ')');
@@ -186,10 +189,11 @@ function accion_(q, u) {
         ['Estado', 'Revisor', 'Comentario', 'SharePoint'].forEach((k) => { if (k in c) r[k] = c[k]; });
         if (c.Datos) r.Datos = c.Datos;
         if (r.Estado === 'Aprobado' && !r.Codigo) {
-          const n = Object.values(d.registros).filter((x) => x.Tipo === r.Tipo)
+          const sigla = siglaDe_(r);
+          const n = Object.values(d.registros).filter((x) => x.Tipo === r.Tipo && siglaDe_(x) === sigla)
             .reduce((m, x) => Math.max(m, Number(x.Correlativo) || 0), 0) + 1;
           r.Correlativo = n;
-          r.Codigo = r.Tipo + '-' + SIGLA + '-' + ('00' + n).slice(-3);
+          r.Codigo = r.Tipo + '-' + sigla + '-' + ('00' + n).slice(-3);
         }
         r.Title = (r.Codigo || 'Sin código') + ' ' + r.Tipo;
         if (c.Estado) r.Visado = new Date().toISOString();

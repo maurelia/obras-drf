@@ -1,7 +1,7 @@
 // Motor de formularios: con una definición de forms.js arma la pantalla de llenado
 // (renderForm) y el documento para revisar, imprimir o guardar como PDF (renderDoc).
 import { FORMS, PUNTOS, evalCota } from './forms.js';
-import { PROYECTO, CONFIG } from '../config.js';
+import { CONFIG, proyectoDe } from '../config.js';
 import * as store from './store.js';
 import { uid } from './schema.js';
 import { pedirGPS } from './consent.js';
@@ -134,7 +134,8 @@ function tableHtml(c, rows, ctx) {
       ${!fixed && rows.length > (c.minRows ?? 1) ? `<button type="button" class="navbtn" data-rmrow="${c.k}" data-i="${i}">Eliminar</button>` : ''}</div>
       ${c.cols.slice(fixed ? 1 : 0).map((col) => `<div class="field"><label for="i_${c.k}.${i}.${col.k}">${esc(col.l)}${col.req ? ' <b class="req">*</b>' : ''}</label>
         ${inputHtml({ ...col, req: false }, r[col.k], `${c.k}.${i}.${col.k}`, ctx)}</div>`).join('')}</div>`;
-  }).join('') + (fixed ? '' : `<button type="button" class="btn sec" data-addrow="${c.k}">+ Agregar fila</button>`);
+  }).join('') + (fixed ? '' : `<button type="button" class="btn sec" data-addrow="${c.k}">+ Agregar fila</button>`)
+    + (c.presets || []).map((p, i) => `<button type="button" class="btn sec" data-preset="${c.k}" data-i="${i}">Cargar puntos: ${esc(p.l)}</button>`).join('');
 }
 
 function pointCells(pt, med) {
@@ -240,13 +241,20 @@ export function renderForm(el, { tipo, data, ctx }) {
 
   el.onclick = async (e) => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.chip || b.dataset.addrow || b.dataset.rmrow || b.dataset.rmfile) ctx.onChange?.();
+    if (b.dataset.chip || b.dataset.addrow || b.dataset.rmrow || b.dataset.rmfile || b.dataset.preset) ctx.onChange?.();
     if (b.dataset.chip) {
       const p = b.dataset.chip, v = b.dataset.val;
       if (b.dataset.multi) { const arr = new Set(getPath(d, p) || []); arr.has(v) ? arr.delete(v) : arr.add(v); setPath(d, p, [...arr]); }
       else setPath(d, p, getPath(d, p) === v ? '' : v);
       draw();
     } else if (b.dataset.addrow) { d[b.dataset.addrow].push({}); draw(); }
+    else if (b.dataset.preset) { // agrega puntos de diseño conocidos (sin repetir los que ya están)
+      const k = b.dataset.preset, c = spec.secciones.flatMap((s) => s.campos).find((x) => x.k === k);
+      const hay = (d[k] || []).filter((r) => Object.values(r).some((x) => !vacio(x)));
+      const ya = new Set(hay.map((r) => r.p));
+      d[k] = [...hay, ...c.presets[Number(b.dataset.i)].filas.filter((r) => !ya.has(r.p)).map((r) => ({ ...r }))];
+      draw();
+    }
     else if (b.dataset.rmrow) { d[b.dataset.rmrow].splice(Number(b.dataset.i), 1); draw(); }
     else if (b.dataset.rmfile) { getPath(d, b.dataset.rmfile).splice(Number(b.dataset.i), 1); draw(); }
     else if (b.dataset.sign) {
@@ -379,7 +387,7 @@ export function renderDoc(reg, ctx) {
   }).join('');
   const ident = kvRow('Código', `<b>${esc(reg.Codigo || (reg.Estado === 'Borrador' ? 'Borrador' : 'Sin código'))}</b>`)
     + kvRow('Formato', esc([reg.Tipo, spec.rev].filter(Boolean).join(' · ')))
-    + kvRow('Proyecto', esc(`${PROYECTO.nombre} · ${PROYECTO.codigo}`))
+    + kvRow('Proyecto', esc(`${proyectoDe(reg).nombre} · ${proyectoDe(reg).codigo}`))
     + kvRow('Fecha', fmtDate(reg.Fecha)) + kvRow('Registrado por', esc(reg.Autor)) + kvRow('Estado', esc(reg.Estado))
     + (reg.Revisor ? kvRow('Revisado por', esc(reg.Revisor)) : '') + (reg.Comentario ? kvRow('Comentario de revisión', esc(reg.Comentario)) : '');
   // Formato Kozan (como los formatos originales en Word): franja azul, logo, bloque de la

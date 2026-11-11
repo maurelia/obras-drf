@@ -1,6 +1,6 @@
 // Interfaz: navegación por hash (#/inicio, #/obras, #/obra/<uid>, #/registros,
 // #/nuevo/<tipo>, #/reg/<uid>, #/ajustes, #/misdatos, #/inventario, #/monitoreo).
-import { CONFIG, DEMO, HAY_KOZAN, USA_SP, PROYECTO } from '../config.js';
+import { CONFIG, DEMO, HAY_KOZAN, USA_SP, PROYECTO, PROYECTOS, proyectoDe } from '../config.js';
 import * as auth from './auth.js';
 import * as buzon from './buzon.js';
 import * as graph from './graph.js';
@@ -10,7 +10,7 @@ import * as consent from './consent.js';
 import * as monitor from './monitor.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, uid, nextCode } from './schema.js';
 import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FASES_OBRA } from './catalogo.js';
-import { FORMS, PUNTOS, evalCota, puede } from './forms.js';
+import { FORMS, PUNTOS, evalCota, evalFilaCota, puede, delProyecto } from './forms.js';
 import { initialData, renderForm, renderDoc, hydrate, fileRefs } from './engine.js';
 import { filasAvance, avanceEtapas, avanceObra, avanceGlobal, serieGlobal, horasRCM, lunes,
   FASES, FASE_PLURAL, faseDe, pesoObra, fasesDeObra } from './avance.js';
@@ -328,13 +328,28 @@ function fieldHtml(f, v) {
 
 // ---------- Datos comunes ----------
 
-async function datos() {
-  const [obras, partidas, registros] = await Promise.all([store.all('obras'), store.all('partidas'), store.all('registros')]);
+// Proyecto que se está mirando (Obras Fluviales / Piscina Operacional); se recuerda en este equipo.
+// Cada proyecto tiene sus obras, su panel de avance, sus formatos y sus códigos de registro.
+const SIGLAS = Object.keys(PROYECTOS);
+let proyVista = (() => { try { const p = localStorage.getItem('proyecto'); return PROYECTOS[p] ? p : 'OF'; } catch { return 'OF'; } })();
+const proyObra = (o) => o?.Proyecto || (o?.Fase === 'Piscina' ? 'PO' : 'OF');
+const proyReg = (r) => proyectoDe(r).sigla;
+const segProyecto = (conteo = {}) => `<div class="seg proy" role="tablist" aria-label="Proyecto">${SIGLAS.map((k) =>
+  `<button role="tab" aria-selected="${k === proyVista}" data-proy="${k}" title="${esc(PROYECTOS[k].nombre + ' · ' + PROYECTOS[k].codigo)}">${esc(PROYECTOS[k].corto)}${conteo[k] ? ` (${conteo[k]})` : ''}</button>`).join('')}</div>`;
+
+// Datos del proyecto en vista (todo = true: de todos los proyectos).
+async function datos(todo = false, sigla = proyVista) {
+  const [obrasT, partidasT, registrosT] = await Promise.all([store.all('obras'), store.all('partidas'), store.all('registros')]);
   // El avance cuenta solo lo visado y subido a SharePoint.
-  const filas = filasAvance(registros.filter(enSP));
-  const porEtapa = avanceEtapas(partidas, filas);
-  obrasCache = obras;
-  return { obras, partidas, registros, filas, porEtapa };
+  const filas = filasAvance(registrosT.filter(enSP));
+  const porEtapa = avanceEtapas(partidasT, filas);
+  obrasCache = obrasT;
+  if (todo) return { obras: obrasT, partidas: partidasT, registros: registrosT, filas, porEtapa };
+  const obras = obrasT.filter((o) => proyObra(o) === sigla);
+  const uids = new Set(obras.map((o) => o.Uid));
+  const partidas = partidasT.filter((p) => uids.has(p.ObraUid));
+  const etapas = new Set(partidas.map((p) => p.Uid));
+  return { obras, partidas, registros: registrosT.filter((x) => proyReg(x) === sigla), filas: filas.filter((f) => etapas.has(f.etapa)), porEtapa };
 }
 
 // Lo que ve cada uno: el administrador, todo lo recibido; en terreno, lo propio;
@@ -355,6 +370,7 @@ const pendIcon = (r) => (!DEMO && modo() === 'google' && r.Estado === 'Enviado' 
 const OBRA_FIELDS = [
   { name: 'Title', label: 'Nombre', required: true, ph: 'Canal de restitución 1' },
   { name: 'Codigo', label: 'Código', required: true, ph: 'CR-1' },
+  { name: 'Proyecto', label: 'Proyecto (OF = Obras Fluviales, PO = Piscina Operacional)', type: 'select', options: ['OF', 'PO'] },
   { name: 'Fase', label: 'Fase', type: 'select', options: FASES_OBRA },
   { name: 'Peso', label: 'Peso en obras tempranas (%)', type: 'number' },
   { name: 'PesoDef', label: 'Peso en obras definitivas (%)', type: 'number' },
@@ -387,7 +403,7 @@ function editObra(obra = {}) {
   openForm({
     title: obra.Uid ? 'Editar obra' : 'Nueva obra',
     fields: OBRA_FIELDS,
-    values: { Estado: 'En ejecución', ...obra },
+    values: { Estado: 'En ejecución', Proyecto: proyVista, ...(proyVista === 'PO' ? { Fase: 'Piscina' } : {}), ...obra },
     onSave: async (d) => {
       d.Codigo = d.Codigo.toUpperCase();
       const rec = { ...sinPrivados(obra), ...d, Uid: obra.Uid || uid() };
@@ -427,8 +443,8 @@ async function cargarCatalogo() {
   for (const o of OBRAS_PROYECTO) {
     const ex = porCodigo[o.Codigo];
     if (!ex) nuevasObras.push(o);
-    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase) || (ex.PesoDef == null && o.PesoDef) || (ex.PesoPis == null && o.PesoPis)) {
-      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase, PesoDef: ex.PesoDef ?? o.PesoDef, PesoPis: ex.PesoPis ?? o.PesoPis });
+    else if ((ex.Peso == null && o.Peso) || (!ex.Fase && o.Fase) || (ex.PesoDef == null && o.PesoDef) || (ex.PesoPis == null && o.PesoPis) || (!ex.Proyecto && o.Proyecto)) {
+      nuevasObras.push({ ...sinPrivados(ex), Peso: ex.Peso ?? o.Peso, Fase: ex.Fase || o.Fase, PesoDef: ex.PesoDef ?? o.PesoDef, PesoPis: ex.PesoPis ?? o.PesoPis, Proyecto: ex.Proyecto || o.Proyecto });
     }
   }
   const etapasHay = remoto ? remoto.partidas : await store.all('partidas');
@@ -448,32 +464,38 @@ async function cargarCatalogo() {
   const n = nuevasObras.filter((o) => !porCodigo[o.Codigo]).length;
   const act = nuevasObras.length - n + sinFase.length;
   toast(n || nuevasEtapas.length ? `${n} obras y ${nuevasEtapas.length} etapas agregadas`
-    : act ? `${act} obras y etapas actualizadas (fase temprana / definitiva)` : 'Las obras del proyecto ya estaban cargadas');
+    : act ? `${act} obras y etapas actualizadas (proyecto y fase)` : 'Las obras del proyecto ya estaban cargadas');
   route();
 }
 
 // ---------- Vistas ----------
 
-// Fase que muestra el panel (obras tempranas / definitivas / piscinas); se recuerda en este equipo.
-let faseVista = (() => { try { const f = localStorage.getItem('faseVista'); return FASES.includes(f) ? f : 'Temprana'; } catch { return 'Temprana'; } })();
+// Fase que muestra el panel de Obras Fluviales (obras tempranas / definitivas); se recuerda en este equipo.
+// Piscina Operacional tiene un solo grupo (fase Piscina).
+const FASES_OF = ['Temprana', 'Definitiva'];
+let faseVista = (() => { try { const f = localStorage.getItem('faseVista'); return FASES_OF.includes(f) ? f : 'Temprana'; } catch { return 'Temprana'; } })();
 
 // Dashboard: avance por fase, curva acumulada, avance por obra y actividad de la semana.
 async function viewInicio(v) {
   setNav('Avance');
   const { obras, partidas, registros, filas, porEtapa } = await datos();
-  const fase = faseVista, otras = FASES.filter((f) => f !== fase);
+  const esPO = proyVista === 'PO';
+  const fase = esPO ? 'Piscina' : faseVista, otras = esPO ? [] : FASES_OF.filter((f) => f !== fase);
+  const nomFase = esPO ? 'piscinas' : FASE_PLURAL[fase].toLowerCase();
   const glob = avanceGlobal(obras, partidas, porEtapa, fase);
-  const txtOtras = otras.map((f) => `${FASE_PLURAL[f].toLowerCase()}: ${fmtPct(avanceGlobal(obras, partidas, porEtapa, f))}`).join(' · ');
+  const txtOtras = otras.map((f) => ` · ${FASE_PLURAL[f].toLowerCase()}: ${fmtPct(avanceGlobal(obras, partidas, porEtapa, f))}`).join('');
   const serie = serieGlobal(obras, partidas, filas, FECHA_BASE, fase);
   const hace7 = avanceGlobal(obras, partidas, avanceEtapas(partidas, filas, addDays(today(), -7)), fase);
   const sem = lunes(today());
   const enviados = registros.filter(enSP); // el panel muestra lo publicado en SharePoint
   const deSemana = enviados.filter((r) => r.Fecha >= sem);
   const horas = deSemana.filter((r) => r.Tipo === 'RCM').reduce((s, r) => s + horasRCM(r), 0);
-  const ultPCT = enviados.filter((r) => r.Tipo === 'PCT').sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || ''))[0];
+  const tipoCT = esPO ? 'PCP' : 'PCT';
+  const ultPCT = enviados.filter((r) => r.Tipo === tipoCT).sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || ''))[0];
   let conf = null;
   if (ultPCT) {
-    const ev = ['rapido', 'disipador'].flatMap((k) => PUNTOS[k].map((p) => evalCota(p.z, ultPCT.Datos?.[k]?.[p.p])).filter(Boolean));
+    const ev = esPO ? (ultPCT.Datos?.puntos || []).map(evalFilaCota).filter(Boolean)
+      : ['rapido', 'disipador'].flatMap((k) => PUNTOS[k].map((p) => evalCota(p.z, ultPCT.Datos?.[k]?.[p.p])).filter(Boolean));
     conf = ev.length ? { pct: (ev.filter((e) => e.nivel === 'ok').length / ev.length) * 100, n: ev.length } : null;
   }
   const porRevisar = esAdmin() ? registros.filter((r) => r.Estado === 'Enviado').length : null;
@@ -483,7 +505,7 @@ async function viewInicio(v) {
   const ultimos = visibles(registros).filter((r) => r.Estado !== 'Borrador').sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || '')).slice(0, 5);
 
   if (!obras.length) {
-    v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}
+    v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${segProyecto()}
       <div class="empty">${ic('inicio', 48)}<b>Sin obras cargadas</b>${esAdmin() ? `Carga las obras y etapas del proyecto para empezar a medir el avance.<br><br>
       <button class="btn" id="cargar">Cargar obras del proyecto (${OBRAS_PROYECTO.length})</button>` : 'El administrador debe cargar las obras del proyecto.'}</div>`;
     $('#cargar') && ($('#cargar').onclick = cargarCatalogo);
@@ -493,38 +515,39 @@ async function viewInicio(v) {
   const nPend = (await porEnviar()).length;
   const delta = glob != null && hace7 != null ? glob - hace7 : null;
   const sinDef = fase !== 'Temprana' && glob == null;
-  v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${avisoPendientes(nPend)}
-    <div class="seg" role="tablist" aria-label="Fase">${FASES.map((f) => `<button role="tab" aria-selected="${f === fase}" data-fase="${f}">${FASE_PLURAL[f]}</button>`).join('')}</div>
-    <div class="group hero"><div class="hl">Avance físico · ${FASE_PLURAL[fase].toLowerCase()}</div>
+  v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${avisoPendientes(nPend)}${segProyecto()}
+    <p class="foot">${esc(PROYECTOS[proyVista].nombre)} · ${esc(PROYECTOS[proyVista].codigo)} · CECO ${esc(PROYECTOS[proyVista].ceco)}</p>
+    ${esPO ? '' : `<div class="seg" role="tablist" aria-label="Fase">${FASES_OF.map((f) => `<button role="tab" aria-selected="${f === fase}" data-fase="${f}">${FASE_PLURAL[f]}</button>`).join('')}</div>`}
+    <div class="group hero"><div class="hl">Avance físico · ${nomFase}</div>
       <div class="hv">${fmtPct(glob)}</div>
-      <div class="bar big" role="img" aria-label="Avance ${FASE_PLURAL[fase].toLowerCase()} ${fmtPct(glob)}"><i style="width:${glob ?? 0}%"></i></div>
+      <div class="bar big" role="img" aria-label="Avance ${nomFase} ${fmtPct(glob)}"><i style="width:${glob ?? 0}%"></i></div>
       <div class="hs">${sinDef ? `Las ${FASE_PLURAL[fase].toLowerCase()} aún no tienen pesos ni etapas: se asignan en cada obra (peso en ${FASE_PLURAL[fase].toLowerCase()}) y en sus etapas (fase ${fase}). Si faltan, usa «Cargar obras del proyecto» en Obras.`
         : `${delta ? `${delta > 0 ? '+' : ''}${delta.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts en los últimos 7 días` : 'Sin variación en los últimos 7 días'}
         · ponderado por peso de obra y etapa dentro de la fase`}
-        · ${txtOtras}</div></div>
+${txtOtras}</div></div>
 
     <div class="tiles">
       ${tile('Protocolos diarios', deSemana.filter((r) => r.Tipo === 'PDA').length, 'esta semana')}
       ${tile('Horas máquina', horas.toLocaleString('es-CL', { maximumFractionDigits: 1 }), 'esta semana (horómetro)')}
-      ${tile('Control topográfico', conf ? fmtPct(conf.pct, 0) : '—', conf ? `conforme · ${ultPCT.Codigo}` : 'sin controles')}
+      ${tile(esPO ? 'Control topográfico piscinas' : 'Control topográfico', conf ? fmtPct(conf.pct, 0) : '—', conf ? `conforme · ${ultPCT.Codigo}` : 'sin controles')}
       ${porRevisar != null ? tile('Por visar', porRevisar, 'recibidos de terreno', '#/registros?f=revisar') : soloConsulta() ? tile('En SharePoint', visibles(registros).length, 'registros visados', '#/registros') : tile('Mis registros', visibles(registros).length, 'en total', '#/registros')}
     </div>
     ${nSubir ? `<div class="notice">${ic('up', 20)}<div><b>${nSubir} ${nSubir === 1 ? 'registro visado' : 'registros visados'} sin subir a SharePoint.</b> El panel se actualiza al subirlos.<br>
       <button class="btn" data-go="#/registros?f=subir" style="margin-top:8px">Revisar y subir</button></div></div>` : ''}
 
-    <h3>Avance acumulado · ${FASE_PLURAL[fase].toLowerCase()}</h3>
+    <h3>Avance acumulado · ${nomFase}</h3>
     <div class="group chartbox">${sinDef ? `<p class="foot" style="padding:16px">Sin ${FASE_PLURAL[fase].toLowerCase()} con peso todavía.</p>` : chartSerie(serie)}</div>
-    <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${FASE_PLURAL[fase].toLowerCase()}</th></tr></thead>
+    <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${nomFase}</th></tr></thead>
       <tbody>${serie.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td></tr>`).join('')}</tbody></table></details>
     <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman` : 'Suman'} los protocolos diarios ${txtVisado()}.</p>
 
-    <h3>Avance por obra · ${FASE_PLURAL[fase].toLowerCase()}</h3>
+    <h3>Avance por ${esPO ? 'piscina' : 'obra · ' + nomFase}</h3>
     <div class="group">${conPeso.map((o) => {
       const a = avanceObra(o.Uid, partidas, porEtapa, fase) ?? 0;
       return `<button class="row" data-go="#/obra/${esc(o.Uid)}"><div class="main"><div class="t">${esc(o.Title)}</div>
         <div class="s">${esc(o.Codigo)} · peso ${fmtN(pesoObra(o, fase))} %</div><div class="bar"><i style="width:${a}%"></i></div></div>
         <span class="pct">${fmtPct(a, 0)}</span><span class="chev">${ic('chev', 18)}</span></button>`;
-    }).join('') || `<div class="row">Ninguna obra tiene peso en ${FASE_PLURAL[fase].toLowerCase()}.</div>`}</div>
+    }).join('') || `<div class="row">Ninguna obra tiene peso en ${nomFase}.</div>`}</div>
 
     <h3>Últimos registros</h3>
     ${ultimos.length ? `<div class="group">${ultimos.map((r) => regRow(r, obrasMap)).join('')}</div>` : '<p class="foot">Todavía no hay registros.</p>'}`;
@@ -585,6 +608,7 @@ async function viewObras(v) {
   obras.sort((a, b) => (a.Codigo || '').localeCompare(b.Codigo || '', 'es', { numeric: true }));
   v.innerHTML = `
     <div class="head"><h1>Obras</h1>${esAdmin() ? `<button class="round" id="addObra" aria-label="Nueva obra">${ic('plus')}</button>` : ''}</div>
+    ${segProyecto()}
     ${obras.length ? `<div class="group">${obras.map((o) => {
       const ps = partidas.filter((p) => p.ObraUid === o.Uid);
       const fs = fasesDeObra(o.Uid, partidas);
@@ -611,7 +635,7 @@ async function viewObras(v) {
 let obraTab = 'etapas';
 
 async function viewObra(v, obraUid) {
-  const { obras, partidas: todas, registros, porEtapa } = await datos();
+  const { obras, partidas: todas, registros, porEtapa } = await datos(true);
   const o = obras.find((x) => x.Uid === obraUid);
   if (!o) { v.innerHTML = '<div class="empty"><b>Obra no encontrada</b></div>'; setNav('', '#/obras'); return; }
   setNav(o.Title, '#/obras');
@@ -671,8 +695,11 @@ async function viewObra(v, obraUid) {
 // Lista de registros + botón para crear según el perfil.
 async function viewRegistros(v, filtro) {
   setNav('Registros');
-  const { obras, registros } = await datos();
+  const { obras, registros: todos } = await datos(true);
+  const registros = todos.filter((r) => proyReg(r) === proyVista);
   const obrasMap = Object.fromEntries(obras.map((o) => [o.Uid, o]));
+  // En el selector de proyecto: lo que espera visado en cada uno (administrador).
+  const conteo = esAdmin() ? Object.fromEntries(SIGLAS.map((k) => [k, todos.filter((r) => r.Estado === 'Enviado' && proyReg(r) === k).length])) : {};
   const mios = registros.filter((r) => r.AutorCorreo === SES.correo);
   const subir = porSubir(registros);
   const segs = soloConsulta() ? { todos: 'En SharePoint' } : esAdmin()
@@ -684,12 +711,12 @@ async function viewRegistros(v, filtro) {
       : f === 'todos' ? visibles(registros)
         : f === 'pendientes' ? mios.filter((r) => r.Estado === 'Observado' || r.Estado === 'Borrador') : mios)
     .sort((a, b) => (b.Fecha || '').localeCompare(a.Fecha || '') || (b.Correlativo || 0) - (a.Correlativo || 0));
-  const tipos = Object.keys(FORMS).filter(puedeLlenar);
+  const tipos = Object.keys(FORMS).filter((t) => puedeLlenar(t) && delProyecto(t, proyVista));
   const nPend = (await porEnviar()).length;
   const vacio = { revisar: ['Nada por visar', DEMO ? '' : 'Usa ↻ para traer lo último que llegó a tu Google Drive.'], subir: ['Nada por subir', 'Todo lo visado ya está en SharePoint.'] }[f]
     || ['Sin registros', tipos.length ? 'Usa el botón + para llenar un protocolo o registro.' : `Aquí aparecerán los registros ${txtVisado()}.`];
   v.innerHTML = `<div class="head"><h1>Registros</h1><span class="hbtns">${!DEMO && !soloConsulta() ? `<button class="round sec" id="actualizar" aria-label="Actualizar desde Google Drive">${ic('sync')}</button>` : ''}${tipos.length ? `<button class="round" id="nuevo" aria-label="Nuevo registro">${ic('plus')}</button>` : ''}</span></div>
-    ${avisoPendientes(nPend)}
+    ${avisoPendientes(nPend)}${segProyecto(conteo)}
     <div class="seg" role="tablist">${Object.entries(segs).map(([k, l]) => `<button role="tab" aria-selected="${k === f}" data-go="#/registros?f=${k}">${l}</button>`).join('')}</div>
     ${f === 'subir' && rows.length ? `<div class="notice">${ic('up', 20)}<div>Se suben a <b>${esc(DEMO ? 'SharePoint (simulado en modo demo)' : CONFIG.SITE_PATH + ' › ' + CONFIG.CARPETA)}</b>: PDF del protocolo, fotos y firmas por código, y la fila en la lista que alimenta el panel.<br>
       <button class="btn" id="subirTodo" style="margin-top:8px">${ic('up', 20)} Subir ${rows.length} a SharePoint</button></div></div>` : ''}
@@ -706,7 +733,7 @@ function elegirTipo(tipos) {
   dlg.innerHTML = `<div class="sh-head"><button type="button" class="navbtn" data-x>Cancelar</button><h2 id="shTitle">Nuevo registro</h2><span class="navbtn"></span></div>
     <div class="sh-body"><div class="group">${tipos.map((t) => `<button class="row" data-tipo="${t}"><span class="ricon">${ic(FORMS[t].icon, 20)}</span>
       <div class="main"><div class="t">${esc(FORMS[t].corto)}</div><div class="s">${t}${FORMS[t].rev ? ' · ' + esc(FORMS[t].rev) : ''}</div></div><span class="chev">${ic('chev', 18)}</span></button>`).join('')}</div>
-      <p class="foot">Se muestran los formatos de tu perfil (${esc(SES.rol)}).</p></div>`;
+      <p class="foot">Proyecto ${esc(PROYECTOS[proyVista].nombre)} (${esc(PROYECTOS[proyVista].codigo)}). Se muestran los formatos de tu perfil (${esc(SES.rol)}).</p></div>`;
   $('[data-x]', dlg).onclick = () => dlg.close();
   dlg.querySelectorAll('[data-tipo]').forEach((b) => (b.onclick = () => { dlg.close(); location.hash = '#/nuevo/' + b.dataset.tipo; }));
   dlg.showModal();
@@ -716,12 +743,16 @@ function elegirTipo(tipos) {
 let formActual = null;
 
 async function viewRegistro(v, regUid, tipoNuevo) {
-  const { obras, partidas, registros } = await datos();
-  const reg = regUid ? registros.find((r) => r.Uid === regUid) : null;
+  const todo = await datos(true);
+  const reg = regUid ? todo.registros.find((r) => r.Uid === regUid) : null;
+  // Un registro existente se muestra con las obras de su proyecto; uno nuevo, del proyecto en vista.
+  const sigla = reg ? proyReg(reg) : proyVista;
+  const { obras, partidas } = await datos(false, sigla);
+  const registros = todo.registros;
   if (regUid && !reg) { setNav('', '#/registros'); v.innerHTML = '<div class="empty"><b>Registro no encontrado</b></div>'; return; }
   const tipo = reg?.Tipo || tipoNuevo;
   const spec = FORMS[tipo];
-  if (!spec || (!reg && !puedeLlenar(tipo))) { location.hash = '#/registros'; return; }
+  if (!spec || (!reg && (!puedeLlenar(tipo) || !delProyecto(tipo, sigla)))) { location.hash = '#/registros'; return; }
   const ctx = { obras, partidas, registros, usuario: SES.nombre, regUid: reg?.Uid || uid() };
   const propio = !reg || reg.AutorCorreo === SES.correo;
   const editable = (!reg && puedeLlenar(tipo)) || (reg && ['Borrador', 'Observado'].includes(reg.Estado) && propio && !soloConsulta());
@@ -730,7 +761,7 @@ async function viewRegistro(v, regUid, tipoNuevo) {
   if (!editable) return viewDoc(v, reg, ctx);
 
   v.innerHTML = `<div class="head"><h1 style="font-size:1.6rem">${esc(spec.titulo)}</h1></div>
-    <p class="foot">${tipo}${spec.rev ? ' · ' + esc(spec.rev) : ''} · ${reg?.Codigo ? esc(reg.Codigo) : 'el código se asigna al aprobar'}</p>
+    <p class="foot">${esc(PROYECTOS[sigla].nombre)} · ${tipo}${spec.rev ? ' · ' + esc(spec.rev) : ''} · ${reg?.Codigo ? esc(reg.Codigo) : 'el código se asigna al aprobar'}</p>
     ${reg?.Estado === 'Observado' ? `<div class="notice bad">${ic('info', 20)}<div><b>Observado por ${esc(reg.Revisor || 'el revisor')}.</b> ${esc(reg.Comentario || '')}<br>Corrige y vuelve a enviar.</div></div>` : ''}
     <div id="frm"></div>
     <p class="err" id="errs" hidden></p>
@@ -751,7 +782,7 @@ async function viewRegistro(v, regUid, tipoNuevo) {
     }
     const d = form.data();
     const rec = {
-      Uid: ctx.regUid, Tipo: tipo, Fecha: d.fecha || today(), ObraUid: d.obra || spec.obraFija || '',
+      Uid: ctx.regUid, Proyecto: sigla, Tipo: tipo, Fecha: d.fecha || today(), ObraUid: d.obra || spec.obraFija || '',
       Datos: d, Autor: reg?.Autor || SES.nombre, AutorCorreo: reg?.AutorCorreo || SES.correo,
       Estado: enviar ? 'Enviado' : reg?.Estado || 'Borrador', Title: `${reg?.Codigo || 'Borrador'} ${spec.corto}`,
     };
@@ -786,7 +817,7 @@ async function viewRegistro(v, regUid, tipoNuevo) {
 async function visar(reg, extra = {}) {
   if (DEMO) {
     const rec = { ...reg, ...extra, Estado: 'Aprobado', Revisor: SES.nombre, Visado: new Date().toISOString() };
-    if (!rec.Codigo) Object.assign(rec, nextCode(rec.Tipo, (await store.all('registros')).filter((r) => r.Uid !== rec.Uid)));
+    if (!rec.Codigo) Object.assign(rec, nextCode(rec.Tipo, (await store.all('registros')).filter((r) => r.Uid !== rec.Uid), proyReg(rec)));
     rec.Title = `${rec.Codigo} ${FORMS[rec.Tipo].corto}`;
     return store.save('registros', rec);
   }
@@ -853,7 +884,7 @@ async function subirSharePoint(regs) {
   let n = 0;
   try {
     if (!DEMO) { log('Cuenta Microsoft…'); await auth.conectar(); }
-    const { obras, partidas, registros } = await datos();
+    const { obras, partidas, registros } = await datos(true);
     const ctx = { obras, partidas, registros, usuario: SES.nombre };
     await publicar.subir(regs, {
       ctx, obras: obras.map(sinPrivados), partidas: partidas.map(sinPrivados), archivosDe, log,
@@ -1126,7 +1157,7 @@ async function viewSinAcceso(v) {
 const linkRow = (go, t, s) => `<button class="row" data-go="${go}"><div class="main"><div class="t">${esc(t)}</div>${s ? `<div class="s">${esc(s)}</div>` : ''}</div><span class="chev">${ic('chev', 18)}</span></button>`;
 const mb = (b) => `${(b / 1048576).toLocaleString('es-CL', { maximumFractionDigits: 1 })} MB`;
 const sumar = (a, k) => { for (const x in k) a[x] = (a[x] || 0) + k[x]; return a; };
-const CLAVES_LOCALES = ['gtok', 'gCorreo', 'perfilGoogle', 'modo', 'demoSesion', 'demoRol', 'faseVista', 'permGPS', 'monitor:cola', 'monitor:ultimoEnvio'];
+const CLAVES_LOCALES = ['gtok', 'gCorreo', 'perfilGoogle', 'modo', 'demoSesion', 'demoRol', 'faseVista', 'proyecto', 'permGPS', 'monitor:cola', 'monitor:ultimoEnvio'];
 
 function bloquePrivacidad() {
   return `<h3>Privacidad</h3><div class="group">${linkRow('#/misdatos', 'Mis datos', 'Qué guarda la app de ti, permisos y autorización')}
@@ -1490,6 +1521,11 @@ addEventListener('hashchange', async () => {
 document.addEventListener('click', (e) => {
   const go = e.target.closest('[data-go]');
   if (go) location.hash = go.dataset.go;
+  const pr = e.target.closest('[data-proy]');
+  if (pr && pr.dataset.proy !== proyVista) {
+    proyVista = pr.dataset.proy; try { localStorage.setItem('proyecto', proyVista); } catch {}
+    route();
+  }
 });
 
 const errorOriginal = console.error.bind(console);

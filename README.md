@@ -22,6 +22,20 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.4.0 (10-11-2026)
+
+- **Dos proyectos** con selector en Avance, Obras y Registros (se recuerda en el equipo, clave `proyecto`):
+  Obras Fluviales DRF (OF, DRF-OF-2509-06, CECO 144004) y **Piscina Operacional DRF** (PO, DRF-PO-2401-05,
+  CECO 144002), según `CODIGOS-PROYECTOS-DOCUMENTOS-CECO.xlsx`. `PROYECTOS` en `config.js` y `SIGLAS` en `buzon/Code.gs`.
+- Cada proyecto tiene su panel (Obras Fluviales con tempranas / definitivas; Piscina Operacional con su avance
+  y «Avance por piscina»), sus obras, sus registros y su correlativo: PDA-OF-001 y PDA-PO-001 son independientes.
+  Obra y registro llevan `Proyecto` (sin campo = OF). Formatos por proyecto: `proyectos` en `forms.js`.
+- Nuevo **PCP – Protocolo de control topográfico de piscinas** (Topógrafo y Administrador): tabla de puntos con
+  ubicación (fondo, talud, zanja, coronamiento), coordenadas, cota de diseño y medida, resultado con la diferencia
+  (tolerancias 0,15 / 0,30 m), talud medido, fotos y las 4 firmas del PCT. Botón «Cargar puntos» con el eje de
+  fondo de la Piscina A (DM 20–40, informe de estatus de agosto 2026). El PCT queda solo en Obras Fluviales.
+- Requiere `buzon/Code.gs` 1.4.0 desplegado (acepta PCP y numera por proyecto).
+
 ## Versión 1.3.0 (10-11-2026)
 
 - Piscinas operacionales **Piscina A (PA)** y **Piscina B (PB)** del DRF como obras, con 8 etapas cada una

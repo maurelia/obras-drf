@@ -32,6 +32,17 @@ export function evalPanda(qd) {
 // Puntos del protocolo 08.Protocolo_Rapido_Disipador_DRF_RevA (cotas de diseño en m).
 const RAPIDO_AB = [533, 532.75, 532.5, 532.25, 532, 530.64, 529.27, 527.91, 526.55, 525.185, 524.05, 523.12,
   522.18, 521.25, 520.315, 519.381, 518.78, 518.3, 517.83];
+// Piscina A: cotas de diseño del eje de fondo (informe de estatus de agosto 2026, PSE-OF-11).
+// El DM 15 queda en el talud y no se considera.
+const PISCINA_A_EJE = [[20, 538.69], [25, 538.934], [30, 539.179], [35, 539.423], [40, 539.668]];
+const numero = (s) => (s === '' || s == null ? NaN : Number(String(s).replace(',', '.')));
+// Fila del control de cotas de piscinas → resultado con la diferencia (m).
+export function evalFilaCota(r) {
+  const e = evalCota(numero(r?.zd), numero(r?.zm));
+  if (!e || isNaN(numero(r?.zd))) return null;
+  return { ...e, res: `${e.res} (${e.d > 0 ? '+' : ''}${e.d.toLocaleString('es-CL', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} m)` };
+}
+
 export const PUNTOS = {
   rapido: RAPIDO_AB.flatMap((ab, i) => ['A', 'B', 'C'].map((l) => ({
     p: `DM-${i * 5}-${l}`, z: l === 'C' ? Math.round((ab - 2.5) * 1000) / 1000 : ab,
@@ -89,7 +100,7 @@ export const FORMS = {
 
   PCT: {
     titulo: 'Protocolo de control topográfico – Rápido de descarga y disipador de energía', corto: 'Control topográfico rápido y disipador',
-    rev: 'Rev. A', roles: [A, T], icon: 'target', obraFija: 'of-rd-1',
+    rev: 'Rev. A', roles: [A, T], icon: 'target', obraFija: 'of-rd-1', proyectos: ['OF'],
     secciones: [
       { t: 'A. Información general', campos: [
         { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
@@ -101,6 +112,42 @@ export const FORMS = {
         campos: [{ k: 'rapido', type: 'points', set: 'rapido' }] },
       { t: 'C. Registro de control – Disipador de energía', nota: CRITERIO_COTA + ' HD = hombro de talud; FD = fondo del disipador.',
         campos: [{ k: 'disipador', type: 'points', set: 'disipador' }] },
+      { t: 'Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos', type: 'photos' }] },
+      { t: 'D. Cierre y responsables', campos: [{ k: 'firmas', type: 'firmas', req: [0], etapas: [
+        'Topografía – Control inicial', 'Supervisor – Recepción', 'Operador – Instrucción recibida', 'Topografía – Recontrol / cierre',
+      ] }] },
+    ],
+  },
+
+  PCP: {
+    titulo: 'Protocolo de control topográfico – Piscinas', corto: 'Control topográfico piscinas',
+    rev: 'Rev. 0', roles: [A, T], icon: 'target', proyectos: ['PO'],
+    secciones: [
+      { t: 'A. Información general', campos: [
+        { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
+        { k: 'obra', l: 'Piscina', type: 'obra', req: true },
+        { k: 'control', l: 'Control de', type: 'radio', options: ['Excavación (sello de fondo)', 'Perfilado de taludes', 'Zanja de anclaje', 'Coronamiento', 'As-built'] },
+        { k: 'responsable', l: 'Responsable topografía', def: 'usuario', req: true },
+        { k: 'supervisor', l: 'Supervisor' },
+        { k: 'equipos', l: 'Equipos utilizados', type: 'checks', options: EQUIPOS_TOPO },
+        { k: 'datum', l: 'Sistema de coordenadas', def: 'UTM WGS84 Huso 19S' },
+      ] },
+      { t: 'B. Registro de control de cotas', nota: CRITERIO_COTA + ' Diseño de referencia: fondo 36 × 16 m, coronamiento 50 × 30 m, h 3,5 m, talud H/V 2/1.',
+        campos: [{ k: 'puntos', type: 'table', minRows: 1, cols: [
+          { k: 'p', l: 'Punto / DM', req: true },
+          { k: 'ubic', l: 'Ubicación', type: 'select', options: ['Fondo', 'Pie de talud', 'Talud', 'Coronamiento', 'Zanja de anclaje'] },
+          { k: 'este', l: 'Este (m)', type: 'number' },
+          { k: 'norte', l: 'Norte (m)', type: 'number' },
+          { k: 'zd', l: 'Cota diseño (m)', type: 'number', req: true },
+          { k: 'zm', l: 'Cota medida (m)', type: 'number', req: true },
+          { k: 'obs', l: 'Observación' },
+        ], calc: evalFilaCota,
+        presets: [{ l: 'Piscina A · eje de fondo DM 20 a 40', filas: PISCINA_A_EJE.map(([dm, z]) => ({ p: `DM-${dm}`, ubic: 'Fondo', zd: z })) }] }] },
+      { t: 'C. Taludes', campos: [
+        { k: 'taludMedido', l: 'Talud medido (H/V)', ph: '2/1' },
+        { k: 'taludConforme', l: 'Talud conforme al diseño (2/1)', type: 'radio', options: SI_NO },
+        { k: 'observaciones', l: 'Observaciones', type: 'textarea' },
+      ] },
       { t: 'Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos', type: 'photos' }] },
       { t: 'D. Cierre y responsables', campos: [{ k: 'firmas', type: 'firmas', req: [0], etapas: [
         'Topografía – Control inicial', 'Supervisor – Recepción', 'Operador – Instrucción recibida', 'Topografía – Recontrol / cierre',
@@ -351,3 +398,5 @@ export const FORMS = {
 };
 
 export const puede = (rol, tipo) => !!rol && FORMS[tipo].roles.includes(rol);
+// Formatos de cada proyecto (sin `proyectos` = sirve para todos).
+export const delProyecto = (tipo, sigla) => !FORMS[tipo].proyectos || FORMS[tipo].proyectos.includes(sigla);
