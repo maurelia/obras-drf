@@ -1,5 +1,6 @@
 // Avance del proyecto, igual que la planilla Control_Avance_Diario_Protocolos_LJ:
-// avance etapa = AvanceBase + Σ "avance del día" de los protocolos diarios enviados (tope 100 %);
+// avance etapa = último corte (recálculo de Proyectos o reporte de terreno visado; si no hay, AvanceBase)
+// + Σ "avance del día" de los protocolos diarios visados posteriores (tope 100 %);
 // avance obra = Σ peso etapa × avance etapa; avance global = Σ peso obra × avance obra.
 
 // Obras tempranas (previas, para mitigar erosión mientras se construye el sistema definitivo)
@@ -14,21 +15,43 @@ const CAMPO_PESO = { Temprana: 'Peso', Definitiva: 'PesoDef', Piscina: 'PesoPis'
 export const pesoObra = (o, fase) => Number(o[CAMPO_PESO[fase] || 'Peso']) || 0;
 export const fasesDeObra = (obraUid, partidas) => FASES.filter((f) => partidas.some((p) => p.ObraUid === obraUid && faseDe(p) === f));
 
-const CUENTA = new Set(['Aprobado']); // solo lo aprobado, que es lo que se sube a SharePoint
+const CUENTA = new Set(['Aprobado']); // solo lo visado por Proyectos
 
-// Filas de avance de los protocolos diarios: [{ fecha, etapa, avance, reg }]
+// Filas de avance de los registros visados: [{ fecha, hora, etapa, avance, corte, reg }].
+// - Protocolo diario (PDA): avance = % de la etapa ejecutado ese día (se suma).
+// - Reporte de terreno (RTE): avance = % ACUMULADO de la etapa observado en terreno a esa fecha y
+//   hora (corte: reemplaza lo anterior; desde ahí vuelven a sumar los protocolos diarios).
 export function filasAvance(registros) {
-  return registros.filter((r) => r.Tipo === 'PDA' && CUENTA.has(r.Estado))
+  const ok = registros.filter((r) => CUENTA.has(r.Estado));
+  const pda = ok.filter((r) => r.Tipo === 'PDA')
     .flatMap((r) => (r.Datos?.avances || []).filter((a) => a.etapa && Number(a.avance))
       .map((a) => ({ fecha: r.Fecha, etapa: a.etapa, avance: Number(a.avance), reg: r })));
+  const rte = ok.filter((r) => r.Tipo === 'RTE')
+    .flatMap((r) => (r.Datos?.avances || []).filter((a) => a.etapa && a.acumulado !== '' && a.acumulado != null && !isNaN(a.acumulado))
+      .map((a) => ({ fecha: r.Fecha, hora: r.Datos?.hora || '', etapa: a.etapa, avance: Number(a.acumulado), corte: true, reg: r })));
+  return [...pda, ...rte];
 }
 
-// % por etapa (Uid → 0..100), opcionalmente hasta una fecha.
+// Cortes de una etapa: los recálculos del catálogo (Corte a FechaCorte) y los reportes de terreno visados.
+const clave = (f) => `${f.fecha || ''} ${f.hora || ''}`;
+function cortesDe(p, filas) {
+  const cs = filas.filter((f) => f.corte && f.etapa === p.Uid);
+  if (p.FechaCorte && p.Corte !== '' && p.Corte != null) cs.push({ fecha: p.FechaCorte, hora: '', etapa: p.Uid, avance: Number(p.Corte), corte: true });
+  return cs.sort((a, b) => clave(a).localeCompare(clave(b)));
+}
+
+// % por etapa (Uid → 0..100), opcionalmente hasta una fecha: último corte (o AvanceBase)
+// más lo informado en los protocolos diarios posteriores a ese corte (tope 100 %).
 export function avanceEtapas(partidas, filas, hasta) {
   const out = {};
-  for (const p of partidas) out[p.Uid] = Number(p.AvanceBase) || 0;
-  for (const f of filas) if (!hasta || f.fecha <= hasta) if (f.etapa in out) out[f.etapa] += f.avance;
-  for (const k in out) out[k] = Math.min(100, out[k]);
+  const porEtapa = {};
+  for (const f of filas) if (!f.corte) (porEtapa[f.etapa] ||= []).push(f);
+  for (const p of partidas) {
+    const c = cortesDe(p, filas).filter((x) => !hasta || x.fecha <= hasta).at(-1);
+    let v = c ? c.avance : Number(p.AvanceBase) || 0;
+    for (const f of porEtapa[p.Uid] || []) if ((!hasta || f.fecha <= hasta) && (!c || f.fecha > c.fecha)) v += f.avance;
+    out[p.Uid] = Math.max(0, Math.min(100, v));
+  }
   return out;
 }
 
@@ -51,10 +74,11 @@ export function avanceGlobal(obras, partidas, porEtapa, fase = 'Temprana') {
 
 // Serie del avance global por fecha: un punto en la fecha base y uno por cada día con protocolo.
 export function serieGlobal(obras, partidas, filas, fechaBase, fase = 'Temprana') {
-  const enFase = new Set(partidas.filter((p) => faseDe(p) === fase).map((p) => p.Uid));
+  const ps = partidas.filter((p) => faseDe(p) === fase);
+  const enFase = new Set(ps.map((p) => p.Uid));
   filas = filas.filter((f) => enFase.has(f.etapa));
-  const fechas = [...new Set(filas.map((f) => f.fecha).filter((f) => f > fechaBase))].sort();
-  return [fechaBase, ...fechas].map((f) => ({ fecha: f, v: avanceGlobal(obras, partidas, avanceEtapas(partidas, filas.filter((x) => x.fecha <= f)), fase) ?? 0 }));
+  const fechas = [...new Set([...filas.map((f) => f.fecha), ...ps.map((p) => p.FechaCorte)].filter((f) => f && f > fechaBase))].sort();
+  return [fechaBase, ...fechas].map((f) => ({ fecha: f, v: avanceGlobal(obras, partidas, avanceEtapas(partidas, filas, f), fase) ?? 0 }));
 }
 
 // Horas de máquina por registro de maquinaria (Σ horómetro final − inicial).

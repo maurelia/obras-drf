@@ -76,7 +76,7 @@ export const PESO_PIS = { PA: 50, PB: 50 };
 const ETAPAS_PISCINA = [['Replanteo y control topográfico', 5], ['Escarpe y excavación masiva', 30],
   ['Perfilado de taludes y sello de fondo', 15], ['Rellenos y compactación (Proctor ≥ 90 %)', 10], ['Zanja de anclaje perimetral', 5],
   ['Geotextil y geomembrana HDPE 1 mm', 25], ['Insertos y tuberías HDPE', 5], ['Terminaciones, as-built y recepción', 5]];
-const PLAN_PIS = { PA: { Estado: 'En ejecución', etapas: ETAPAS_PISCINA }, PB: { etapas: ETAPAS_PISCINA } };
+const PLAN_PIS = { PA: { Estado: 'En ejecución', etapas: ETAPAS_PISCINA }, PB: { Estado: 'En ejecución', etapas: ETAPAS_PISCINA } };
 
 // Pesos (en obras tempranas) y etapas de 07.SEGUIMIENTO\Control_Avance_Diario_Protocolos_LJ_Obras_Fluviales_RevB.xlsx
 // (hojas Configuracion y Registro_Diario). Pesos en %; AvanceBase = avance acumulado
@@ -113,6 +113,20 @@ const PLAN_DEF = {
   'CC-1': { Estado: 'Terminada', etapas: [['Canal de contorno construido', 100, 100]] },
 };
 
+// Recálculo de avance de Proyectos (corte): % acumulado de la etapa a FECHA_CORTE. Reemplaza el
+// avance anterior desde esa fecha; después siguen sumando los protocolos diarios y los reportes de terreno visados.
+// 16-11-2026: excavación y taludes listos en canal de encauzamiento (ya al 100 %), rápido y disipador,
+// y en Piscina B; Piscina A con excavación y taludes al 80 %. El replanteo y control topográfico de
+// cada piscina sigue a su excavación.
+export const FECHA_CORTE = '2026-11-16';
+export const CORTE = {
+  'of-rd-1-e1': 100,                     // RD-1 Excavación (antes 90 %)
+  'of-de-e1': 100, 'of-de-e2': 100,      // DE Excavación de fondo (antes 35 %) y de cuenco (antes 0 %)
+  'of-pb-p1': 100, 'of-pb-p2': 100, 'of-pb-p3': 100, // PB replanteo, excavación masiva, perfilado de taludes y sello
+  'of-pa-p1': 80, 'of-pa-p2': 80, 'of-pa-p3': 80,    // PA ídem al 80 %
+};
+const estadoEtapa = (a) => (a >= 100 ? 'Terminada' : a > 0 ? 'En ejecución' : 'Pendiente');
+
 export const ETAPAS_PROYECTO = [];
 for (const o of OBRAS_PROYECTO) {
   const plan = PLAN[o.Codigo];
@@ -143,4 +157,8 @@ for (const o of OBRAS_PROYECTO) {
     Uid: `${o.Uid}-p${i + 1}`, ObraUid: o.Uid, Item: `P${i + 1}`, Title, Peso, AvanceBase, Fase: 'Piscina',
     Estado: AvanceBase >= 100 ? 'Terminada' : AvanceBase > 0 ? 'En ejecución' : 'Pendiente',
   }));
+}
+for (const p of ETAPAS_PROYECTO) {
+  if (!(p.Uid in CORTE)) continue;
+  Object.assign(p, { Corte: CORTE[p.Uid], FechaCorte: FECHA_CORTE, Estado: estadoEtapa(CORTE[p.Uid]) });
 }

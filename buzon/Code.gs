@@ -31,14 +31,14 @@ const MAX_EVENTOS = 1000; // se conservan los más recientes
 
 // Qué formatos puede enviar cada perfil (igual que js/forms.js).
 const PERMISOS = {
-  'Supervisor de terraza': ['PDA', 'RCM', 'PHU'],
-  'Topógrafo': ['PDA', 'PCT', 'PCP', 'PTT', 'TRT', 'PND'],
+  'Supervisor de terraza': ['PDA', 'RTE', 'PAT', 'RCM', 'PHU'],
+  'Topógrafo': ['PDA', 'RTE', 'PCT', 'PCP', 'PTT', 'TRT', 'PND'],
   'Operador': ['PDA', 'RCM', 'PHU'],
 };
-const TIPOS = ['PDA', 'PCT', 'PCP', 'RCM', 'PTT', 'TRT', 'PRV', 'PHU', 'PND'];
+const TIPOS = ['PDA', 'RTE', 'PAT', 'PCT', 'PCP', 'RCM', 'PTT', 'TRT', 'PRV', 'PHU', 'PND'];
 
 function doGet() {
-  return ContentService.createTextOutput('Obras DRF · buzón activo (' + PROYECTO + ')');
+  return ContentService.createTextOutput('Obras DRF · buzón activo 1.5.0 (' + PROYECTO + ')');
 }
 
 function doPost(e) {

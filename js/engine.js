@@ -23,6 +23,7 @@ export function initialData(tipo, ctx) {
     else if (c.type === 'points' || c.type === 'checklist') d[c.k] = {};
     else if (c.type === 'firmas') d[c.k] = c.etapas.map(() => ({}));
     else if (c.def === 'hoy') d[c.k] = today();
+    else if (c.def === 'ahora') d[c.k] = new Date().toTimeString().slice(0, 5);
     else if (c.def === 'usuario') d[c.k] = ctx.usuario;
     else if (c.def != null) d[c.k] = c.def;
   }
@@ -346,7 +347,7 @@ function campoDoc(c, d, ctx) {
     case 'table': {
       const rows = v || [];
       if (!rows.length) return '<p class="muted">Sin registros.</p>';
-      return `<div class="tablewrap"><table class="dt"><thead><tr>${c.cols.map((col) => `<th>${esc(col.l)}</th>`).join('')}${c.calc ? '<th>Estado</th>' : ''}</tr></thead><tbody>
+      return `<div class="tablewrap"><table class="dt"><thead><tr>${c.cols.map((col) => `<th>${esc(col.l)}</th>`).join('')}${c.calc ? `<th>${esc(c.calcL || 'Estado')}</th>` : ''}</tr></thead><tbody>
         ${rows.map((r) => { const res = c.calc?.(r); return `<tr>${c.cols.map((col) => `<td>${docVal(col, r[col.k], ctx, true)}</td>`).join('')}${c.calc ? `<td>${res ? `<span class="badge ${res.nivel}">${esc(res.res)}</span>` : ''}</td>` : ''}</tr>`; }).join('')}
       </tbody></table></div>`;
     }

@@ -60,7 +60,109 @@ const CRITERIO_COTA = `Diferencia = cota medida − cota diseño. Positivo: falt
 const AREAS = ['Operaciones DRF', 'Topografía', 'Dirección de Proyectos', 'Contratista', 'Otra'];
 const EQUIPOS_TOPO = ['GNSS RTK', 'Estación Total', 'Nivel', 'Otro'];
 
+// Avance actual de cada etapa (Uid → %), lo fija la app al abrir un formulario: el reporte de
+// terreno muestra en cada fila el avance anterior y el que se reporta.
+let AVANCE_ACTUAL = {};
+export const fijarAvanceActual = (m) => { AVANCE_ACTUAL = m || {}; };
+const pct = (n) => `${Number(n).toLocaleString('es-CL', { maximumFractionDigits: 1 })} %`;
+// Fila del reporte de terreno: guarda el avance anterior de la etapa (al elegirla) y muestra antes → ahora.
+function evalReporte(r) {
+  if (!r) return null;
+  if (r.etapa && r._etapaAnt !== r.etapa && r.etapa in AVANCE_ACTUAL) { r.anterior = Math.round(AVANCE_ACTUAL[r.etapa] * 10) / 10; r._etapaAnt = r.etapa; }
+  const a = numero(r.acumulado);
+  if (isNaN(a)) return r.anterior != null ? { res: `Antes ${pct(r.anterior)}`, nivel: '' } : null;
+  if (a < 0 || a > 100) return { res: 'Debe estar entre 0 y 100 %', nivel: 'bad' };
+  if (r.anterior == null) return { res: `Reportado ${pct(a)}`, nivel: 'ok' };
+  const d = a - r.anterior;
+  return { res: `${pct(r.anterior)} → ${pct(a)} (${d >= 0 ? '+' : ''}${d.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts)`, nivel: d < 0 ? 'warn' : 'ok' };
+}
+
+const CLIMA = ['Despejado', 'Nublado', 'Viento fuerte', 'Lluvia', 'Otro'];
+const IMPACTO = ['Plazo', 'Costo', 'Calidad', 'Seguridad', 'Medio ambiente', 'Operación DRF'];
+
 export const FORMS = {
+  RTE: {
+    titulo: 'Reporte de terreno – Avance de obras', corto: 'Reporte de terreno', rev: 'Rev. 0',
+    roles: [A, S, T], icon: 'clock',
+    secciones: [
+      { t: 'A. Información general', nota: 'Fecha y hora del reporte: se completan solas al abrirlo; corrígelas si reportas algo observado antes.', campos: [
+        { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
+        { k: 'hora', l: 'Hora', type: 'time', req: true, def: 'ahora' },
+        { k: 'turno', l: 'Turno', type: 'radio', options: ['Día', 'Noche'] },
+        { k: 'responsable', l: 'Reporta', def: 'usuario', req: true },
+        { k: 'clima', l: 'Condición climática', type: 'radio', options: CLIMA },
+        { k: 'personal', l: 'Personal en terreno (N°)', type: 'number' },
+        { k: 'equipos', l: 'Equipos en terreno' },
+      ] },
+      { t: 'B. Avance observado por obra y etapa', nota: 'Una fila por etapa. Indica el avance ACUMULADO de la etapa que ves hoy en terreno (no el del día): '
+        + 'la app muestra el avance anterior y la diferencia. El avance del proyecto se actualiza recién cuando Proyectos visa el reporte.',
+        campos: [{ k: 'avances', type: 'table', minRows: 1, calcL: 'Avance (antes → ahora)', cols: [
+          { k: 'etapa', l: 'Obra / etapa', type: 'etapa', req: true },
+          { k: 'acumulado', l: 'Avance acumulado (%)', type: 'number', req: true },
+          { k: 'ubicacion', l: 'Sector / PK' },
+          { k: 'actividad', l: 'Actividad ejecutada', req: true },
+          { k: 'obs', l: 'Observaciones' },
+        ], calc: evalReporte }] },
+      { t: 'C. Interferencias y restricciones', campos: [
+        { k: 'interferencias', l: 'Interferencias, detenciones o restricciones del día', type: 'textarea' },
+        { k: 'seguridad', l: 'Incidentes o condiciones de seguridad / medio ambiente', type: 'textarea' },
+      ] },
+      { t: 'D. Registro fotográfico', campos: [{ k: 'fotos', l: 'Fotos del avance', type: 'photos' }] },
+      { t: 'E. Responsable del reporte', nota: 'El reporte lo valida Proyectos al visarlo: queda con su nombre, fecha y código.', campos: [
+        { k: 'firmaCargo', l: 'Cargo' },
+        { k: 'firma', l: 'Firma', type: 'signature', req: true },
+      ] },
+    ],
+  },
+
+  PAT: {
+    titulo: 'Protocolo de acuerdos en terreno – Cambios, desviaciones y plan de acción', corto: 'Acuerdos en terreno', rev: 'Rev. 0',
+    roles: [A, S], icon: 'handshake',
+    secciones: [
+      { t: 'A. Información general', campos: [
+        { k: 'fecha', l: 'Fecha', type: 'date', req: true, def: 'hoy' },
+        { k: 'hora', l: 'Hora', type: 'time', req: true, def: 'ahora' },
+        { k: 'obra', l: 'Obra', type: 'obra', req: true },
+        { k: 'sector', l: 'Sector / PK' },
+        { k: 'motivo', l: 'Motivo de la reunión en terreno', type: 'textarea', req: true },
+        { k: 'referencias', l: 'Planos, EETT o documentos de referencia' },
+      ] },
+      { t: 'B. Participantes', campos: [{ k: 'participantes', type: 'table', minRows: 1, cols: [
+        { k: 'nombre', l: 'Nombre', req: true },
+        { k: 'cargo', l: 'Cargo' },
+        { k: 'area', l: 'Área / empresa', type: 'select', options: ['Operaciones DRF', 'Dirección de Proyectos', 'Topografía', 'Contratista', 'Otra'] },
+      ] }] },
+      { t: 'C. Cambios al proyecto', nota: 'Cambios acordados respecto de planos y especificaciones. Si no hay, deja la tabla vacía.',
+        campos: [{ k: 'cambios', type: 'table', minRows: 0, cols: [
+          { k: 'descripcion', l: 'Cambio acordado', req: true },
+          { k: 'motivo', l: 'Motivo / justificación' },
+          { k: 'referencia', l: 'Plano / EETT afectado' },
+          { k: 'impacto', l: 'Impacto principal', type: 'select', options: IMPACTO },
+        ] }] },
+      { t: 'D. Desviaciones detectadas', nota: 'Diferencias entre lo ejecutado y lo proyectado (geometría, cotas, materiales, secuencia, plazos).',
+        campos: [{ k: 'desviaciones', type: 'table', minRows: 0, cols: [
+          { k: 'descripcion', l: 'Desviación', req: true },
+          { k: 'causa', l: 'Causa' },
+          { k: 'criticidad', l: 'Criticidad', type: 'select', options: ['Alta', 'Media', 'Baja'] },
+          { k: 'impacto', l: 'Impacto principal', type: 'select', options: IMPACTO },
+        ] }] },
+      { t: 'E. Plan de acción', campos: [{ k: 'acciones', type: 'table', minRows: 1, cols: [
+        { k: 'accion', l: 'Acción', req: true },
+        { k: 'responsable', l: 'Responsable', req: true },
+        { k: 'plazo', l: 'Fecha compromiso', type: 'date', req: true },
+        { k: 'estado', l: 'Estado', type: 'select', options: ['Abierta', 'En curso', 'Cerrada'] },
+      ] }] },
+      { t: 'F. Acuerdos', campos: [
+        { k: 'acuerdos', l: 'Acuerdos y observaciones', type: 'textarea', req: true },
+        { k: 'fotos', l: 'Fotos', type: 'photos' },
+      ] },
+      { t: 'G. Firmas', nota: 'Obligatorias las cuatro: el protocolo no se puede enviar sin ellas. Si alguien no está en terreno, guarda el borrador y completa su firma en este mismo equipo.',
+        campos: [{ k: 'firmas', type: 'firmas', req: [0, 1, 2, 3], etapas: [
+          'Jefe de Operaciones o Jefe de División DRF', 'Supervisor', 'Proyectos', 'Director de Proyectos',
+        ] }] },
+    ],
+  },
+
   PDA: {
     titulo: 'Protocolo diario de avance de obras', corto: 'Protocolo diario de avance', rev: 'Rev. C',
     roles: [A, S, T, O], icon: 'rep',

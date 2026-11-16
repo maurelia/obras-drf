@@ -9,8 +9,8 @@ import * as publicar from './publicar.js';
 import * as consent from './consent.js';
 import * as monitor from './monitor.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, uid, nextCode } from './schema.js';
-import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FASES_OBRA } from './catalogo.js';
-import { FORMS, PUNTOS, evalCota, evalFilaCota, puede, delProyecto } from './forms.js';
+import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FECHA_CORTE, FASES_OBRA } from './catalogo.js';
+import { FORMS, PUNTOS, evalCota, evalFilaCota, puede, delProyecto, fijarAvanceActual } from './forms.js';
 import { initialData, renderForm, renderDoc, hydrate, fileRefs } from './engine.js';
 import { filasAvance, avanceEtapas, avanceObra, avanceGlobal, serieGlobal, horasRCM, lunes,
   FASES, FASE_PLURAL, faseDe, pesoObra, fasesDeObra } from './avance.js';
@@ -37,6 +37,8 @@ const P = {
   check: '<path d="M4 12l5 5L20 6"/>',
   drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
   gauge: '<path d="M4 16a8 8 0 1 1 16 0M12 16l4-5"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  handshake: '<path d="M3 11l4-4 4 2 3-2 7 6M3 11l6 6 2-1 2 2 2-1 2 1 3-3M9 13l2 2M12 11l3 3"/>',
   print: '<path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/>',
   down: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   up: '<path d="M12 20V9M7 14l5-5 5 5M5 4h14"/>',
@@ -394,6 +396,8 @@ const PARTIDA_FIELDS = [
   { name: 'Fase', label: 'Fase', type: 'select', options: FASES },
   { name: 'Peso', label: 'Peso en la obra, dentro de su fase (%)', type: 'number' },
   { name: 'AvanceBase', label: 'Avance inicial (%)', type: 'number' },
+  { name: 'Corte', label: 'Avance recalculado por Proyectos (%)', type: 'number' },
+  { name: 'FechaCorte', label: 'Fecha del recálculo (desde ahí reemplaza al avance anterior)', type: 'date' },
   { name: 'Unidad', label: 'Unidad', ph: 'm³' },
   { name: 'CantContrato', label: 'Cantidad', type: 'number' },
   { name: 'Estado', label: 'Estado', type: 'select', options: ESTADOS_PARTIDA },
@@ -456,15 +460,30 @@ async function cargarCatalogo() {
     const cod = OBRAS_PROYECTO.find((o) => o.Uid === p.ObraUid).Codigo;
     return { ...p, ObraUid: obraUid[cod] || p.ObraUid };
   });
+  // Recálculos de avance del catálogo (corte) más nuevos que los del buzón: se aplican a la etapa.
+  const cortes = ETAPAS_PROYECTO.filter((p) => p.FechaCorte && partidas.has(p.Uid)).map((p) => [p, etapasHay.find((x) => x.Uid === p.Uid)])
+    .filter(([p, ex]) => (ex.FechaCorte || '') < p.FechaCorte)
+    .map(([p, ex]) => ({ ...sinPrivados(ex), Corte: p.Corte, FechaCorte: p.FechaCorte, Estado: p.Estado }));
+  // La obra que recibe avance deja de estar «Planificada».
+  for (const c of cortes) {
+    const o = [...nuevasObras, ...obras].find((x) => x.Uid === c.ObraUid);
+    if (o && c.Corte > 0 && (!o.Estado || o.Estado === 'Planificada')) {
+      const i = nuevasObras.indexOf(o);
+      const upd = { ...sinPrivados(o), Estado: 'En ejecución' };
+      if (i >= 0) nuevasObras[i] = upd; else nuevasObras.push(upd);
+    }
+  }
   try {
     if (nuevasObras.length) await persistir('obras', nuevasObras);
     if (nuevasEtapas.length) await persistir('partidas', nuevasEtapas);
     if (sinFase.length) await persistir('partidas', sinFase);
+    if (cortes.length) await persistir('partidas', cortes);
   } catch (e) { return toast(e.message, true); }
   const n = nuevasObras.filter((o) => !porCodigo[o.Codigo]).length;
   const act = nuevasObras.length - n + sinFase.length;
-  toast(n || nuevasEtapas.length ? `${n} obras y ${nuevasEtapas.length} etapas agregadas`
-    : act ? `${act} obras y etapas actualizadas (proyecto y fase)` : 'Las obras del proyecto ya estaban cargadas');
+  toast(n || nuevasEtapas.length ? `${n} obras y ${nuevasEtapas.length} etapas agregadas${cortes.length ? ` · ${cortes.length} etapas con avance recalculado` : ''}`
+    : cortes.length ? `${cortes.length} etapas con avance recalculado al ${fmtDate(cortes[0].FechaCorte)}`
+      : act ? `${act} obras y etapas actualizadas (proyecto y fase)` : 'Las obras del proyecto ya estaban cargadas');
   route();
 }
 
@@ -514,6 +533,13 @@ async function viewInicio(v) {
 
   const nPend = (await porEnviar()).length;
   const delta = glob != null && hace7 != null ? glob - hace7 : null;
+  // Recálculo de avance del catálogo que el buzón todavía no tiene (administrador).
+  const sinCorte = esAdmin() ? ETAPAS_PROYECTO.filter((p) => p.FechaCorte && partidas.some((x) => x.Uid === p.Uid && (x.FechaCorte || '') < p.FechaCorte)).length : 0;
+  // Avance diario: un punto por día con reporte de terreno o protocolo diario visado.
+  const deFase = new Set(partidas.filter((p) => faseDe(p) === fase).map((p) => p.Uid));
+  const regsDia = (f) => enviados.filter((r) => r.Fecha === f && ['RTE', 'PDA'].includes(r.Tipo) && (r.Datos?.avances || []).some((a) => deFase.has(a.etapa)));
+  const diario = serie.slice(1).map((p, i) => ({ ...p, d: p.v - serie[i].v, regs: regsDia(p.fecha) })).reverse().slice(0, 10);
+  const rtePorVisar = esAdmin() ? registros.filter((r) => r.Estado === 'Enviado' && r.Tipo === 'RTE').length : 0;
   const sinDef = fase !== 'Temprana' && glob == null;
   v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${avisoPendientes(nPend)}${segProyecto()}
     <p class="foot">${esc(PROYECTOS[proyVista].nombre)} · ${esc(PROYECTOS[proyVista].codigo)} · CECO ${esc(PROYECTOS[proyVista].ceco)}</p>
@@ -527,11 +553,13 @@ async function viewInicio(v) {
 ${txtOtras}</div></div>
 
     <div class="tiles">
-      ${tile('Protocolos diarios', deSemana.filter((r) => r.Tipo === 'PDA').length, 'esta semana')}
+      ${tile('Reportes de terreno', deSemana.filter((r) => r.Tipo === 'RTE').length, `visados esta semana · ${deSemana.filter((r) => r.Tipo === 'PDA').length} protocolos diarios`)}
       ${tile('Horas máquina', horas.toLocaleString('es-CL', { maximumFractionDigits: 1 }), 'esta semana (horómetro)')}
       ${tile(esPO ? 'Control topográfico piscinas' : 'Control topográfico', conf ? fmtPct(conf.pct, 0) : '—', conf ? `conforme · ${ultPCT.Codigo}` : 'sin controles')}
       ${porRevisar != null ? tile('Por visar', porRevisar, 'recibidos de terreno', '#/registros?f=revisar') : soloConsulta() ? tile('En SharePoint', visibles(registros).length, 'registros visados', '#/registros') : tile('Mis registros', visibles(registros).length, 'en total', '#/registros')}
     </div>
+    ${sinCorte ? `<div class="notice">${ic('info', 20)}<div><b>Recálculo de avance al ${fmtDate(FECHA_CORTE)} sin aplicar (${sinCorte} etapas).</b> Aplícalo para que el panel y los usuarios de terreno lo vean.<br>
+      <button class="btn" id="aplicarCorte" style="margin-top:8px">Aplicar recálculo</button></div></div>` : ''}
     ${nSubir ? `<div class="notice">${ic('up', 20)}<div><b>${nSubir} ${nSubir === 1 ? 'registro visado' : 'registros visados'} sin subir a SharePoint.</b> El panel se actualiza al subirlos.<br>
       <button class="btn" data-go="#/registros?f=subir" style="margin-top:8px">Revisar y subir</button></div></div>` : ''}
 
@@ -539,7 +567,14 @@ ${txtOtras}</div></div>
     <div class="group chartbox">${sinDef ? `<p class="foot" style="padding:16px">Sin ${FASE_PLURAL[fase].toLowerCase()} con peso todavía.</p>` : chartSerie(serie)}</div>
     <details class="foot tabla"><summary>Ver como tabla</summary><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${nomFase}</th></tr></thead>
       <tbody>${serie.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td></tr>`).join('')}</tbody></table></details>
-    <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ; desde ahí suman` : 'Suman'} los protocolos diarios ${txtVisado()}.</p>
+    <p class="foot">${fase === 'Temprana' ? `Parte del avance al ${fmtDate(FECHA_BASE)} según la planilla de control LJ;` : ''} los recálculos de Proyectos y los reportes de terreno fijan el avance acumulado de cada etapa a su fecha y hora, y desde ahí suman los protocolos diarios ${txtVisado()}.</p>
+
+    <h3>Avance diario · validado por Proyectos</h3>
+    ${diario.length ? `<div class="tablewrap"><table class="dt"><thead><tr><th>Fecha</th><th>Avance ${nomFase}</th><th>Variación</th><th>Reportes</th></tr></thead><tbody>
+      ${diario.map((p) => `<tr><td>${fmtDate(p.fecha)}</td><td class="num">${fmtPct(p.v)}</td><td class="num">${p.d > 0 ? '+' : ''}${p.d.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts</td>
+        <td>${p.regs.length ? p.regs.map((r) => `<a href="#/reg/${esc(r.Uid)}">${esc(r.Codigo || r.Tipo)}</a>${r.Tipo === 'RTE' && r.Datos?.hora ? ` ${esc(r.Datos.hora)}` : ''}`).join(', ') : `<span class="muted">${p.fecha === FECHA_CORTE ? 'Recálculo de Proyectos' : '—'}</span>`}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="foot">Aún no hay avance diario: aparece con cada reporte de terreno o protocolo diario visado.</p>'}
+    <p class="foot">El reporte de terreno (RTE) informa el avance acumulado de cada etapa con fecha y hora; cuenta recién cuando Proyectos lo visa.${rtePorVisar ? ` <a href="#/registros?f=revisar">${rtePorVisar} ${rtePorVisar === 1 ? 'reporte' : 'reportes'} de terreno por visar.</a>` : ''}</p>
 
     <h3>Avance por ${esPO ? 'piscina' : 'obra · ' + nomFase}</h3>
     <div class="group">${conPeso.map((o) => {
@@ -553,6 +588,7 @@ ${txtOtras}</div></div>
     ${ultimos.length ? `<div class="group">${ultimos.map((r) => regRow(r, obrasMap)).join('')}</div>` : '<p class="foot">Todavía no hay registros.</p>'}`;
   if (!sinDef) wireChart(v, serie);
   wirePendientes(v);
+  $('#aplicarCorte') && ($('#aplicarCorte').onclick = cargarCatalogo);
   v.querySelectorAll('[data-fase]').forEach((b) => (b.onclick = () => {
     faseVista = b.dataset.fase; try { localStorage.setItem('faseVista', faseVista); } catch {} route();
   }));
@@ -654,7 +690,7 @@ async function viewObra(v, obraUid) {
     // Etapas agrupadas por fase (con título solo si la obra tiene las dos).
     body = partidas.length ? fs.map((f) => `${fs.length > 1 ? `<h3>${FASE_PLURAL[f]}</h3>` : ''}<div class="group">${partidas.filter((p) => faseDe(p) === f).map((p) => `
       <button class="row" data-partida="${esc(p.Uid)}" ${esAdmin() ? '' : 'disabled'}><div class="main"><div class="t">${esc(p.Item ? p.Item + '. ' : '')}${esc(p.Title)}${pendIcon(p)}</div>
-      <div class="s">${fs.length > 1 ? '' : `${f} · `}${Number(p.Peso) ? `peso ${fmtN(p.Peso)} %` : 'sin peso'}${p.CantContrato ? ` · ${fmtN(p.CantContrato)} ${esc(p.Unidad)}` : ''}</div>
+      <div class="s">${fs.length > 1 ? '' : `${f} · `}${Number(p.Peso) ? `peso ${fmtN(p.Peso)} %` : 'sin peso'}${p.FechaCorte ? ` · recalculado ${fmtN(p.Corte)} % al ${fmtDate(p.FechaCorte)}` : ''}${p.CantContrato ? ` · ${fmtN(p.CantContrato)} ${esc(p.Unidad)}` : ''}</div>
       <div class="bar"><i style="width:${porEtapa[p.Uid]}%"></i></div></div><span class="pct">${fmtPct(porEtapa[p.Uid], 0)}</span></button>`).join('')}</div>`).join('')
       : `<div class="empty">${esAdmin() ? 'Agrega las etapas de la obra con su peso para medir el avance.' : 'Esta obra no tiene etapas definidas.'}</div>`;
     if (esAdmin()) body += `<div style="margin-top:12px"><button class="btn sec" id="addPartida">${ic('plus', 20)} Agregar etapa</button></div>`;
@@ -771,6 +807,7 @@ async function viewRegistro(v, regUid, tipoNuevo) {
       ${reg && reg.Estado === 'Borrador' ? '<button class="btn danger" id="descartar">Descartar borrador</button>' : ''}
     </div>`;
   let dirty = false;
+  fijarAvanceActual(todo.porEtapa); // el reporte de terreno muestra el avance anterior de cada etapa
   const form = renderForm($('#frm', v), { tipo, data: reg?.Datos || initialData(tipo, ctx), ctx: { ...ctx, onChange: () => (dirty = true) } });
 
   const guardar = async (enviar) => {
@@ -1062,10 +1099,10 @@ async function viewAjustes(v) {
       <div class="s">${esc(u.Correo)}</div></div><span class="badge ${u.Activo === false ? 'bad' : ''}">${u.Activo === false ? 'Inactivo' : esc(u.Rol)}</span></button>`).join('')}</div>`
       : '<p class="foot">Sin usuarios. Agrega la cuenta Google de cada persona de terreno con su perfil: sin eso el buzón no le recibe envíos.</p>'}
     <div style="margin-top:10px"><button class="btn sec" id="addUser">${ic('plus', 20)} Agregar usuario</button></div>
-    <p class="foot">Todos entran con su cuenta Google (correo personal o de empresa). Quien publicó el buzón es siempre administrador. Supervisor de terraza: PDA, RCM y PHU. Topógrafo: PDA, PCT, PTT, TRT y PND. Operador: PDA, RCM y PHU. Quien solo consulta entra con su cuenta Kozan y ve lo publicado en SharePoint.</p>
+    <p class="foot">Todos entran con su cuenta Google (correo personal o de empresa). Quien publicó el buzón es siempre administrador. Supervisor de terraza: PDA, RTE (reporte de terreno), PAT (acuerdos en terreno), RCM y PHU. Topógrafo: PDA, RTE, PCT, PCP, PTT, TRT y PND. Operador: PDA, RCM y PHU. Quien solo consulta entra con su cuenta Kozan y ve lo publicado en SharePoint.</p>
     <h3>Proyecto</h3>
     <div><button class="btn sec" id="cargar">Cargar obras y etapas del proyecto</button></div>
-    <p class="foot">Agrega solo las que falten (11 obras, con pesos y etapas de la planilla de control LJ).</p>` : ''}
+    <p class="foot">Agrega las obras y etapas que falten y aplica los recálculos de avance de Proyectos (último: ${fmtDate(FECHA_CORTE)}).</p>` : ''}
     ${bloquePrivacidad()}
     <h3>Acerca de</h3>
     <div class="group kv">${filaKV('Versión', CONFIG.VERSION)}${filaKV('Privacidad', '<a href="privacidad.html">Política de privacidad</a>')}${filaKV('Condiciones', '<a href="terminos.html">Términos de uso</a>')}</div>

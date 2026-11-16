@@ -15,7 +15,7 @@ export const ESTADOS_OBRA = ['Planificada', 'En ejecución', 'Paralizada', 'Term
 export const ESTADOS_PARTIDA = ['Pendiente', 'En ejecución', 'Terminada'];
 // Borrador: solo lo ve su autor. Enviado: firmado, espera revisión. Observado: vuelve al autor.
 export const ESTADOS_REG = ['Borrador', 'Enviado', 'Observado', 'Aprobado'];
-export const TIPOS_REG = ['PDA', 'PCT', 'PCP', 'RCM', 'PTT', 'TRT', 'PRV', 'PHU', 'PND'];
+export const TIPOS_REG = ['PDA', 'RTE', 'PAT', 'PCT', 'PCP', 'RCM', 'PTT', 'TRT', 'PRV', 'PHU', 'PND'];
 
 export const LISTS = {
   obras: {
@@ -33,7 +33,7 @@ export const LISTS = {
     title: 'Partidas',
     columns: [
       text('Uid', { indexed: true }), text('ObraUid', { indexed: true }), text('Item'), choice('Fase', ['Temprana', 'Definitiva', 'Piscina']), num('Peso'),
-      num('AvanceBase'), text('Unidad'), num('CantContrato'), choice('Estado', ESTADOS_PARTIDA),
+      num('AvanceBase'), num('Corte'), date('FechaCorte'), text('Unidad'), num('CantContrato'), choice('Estado', ESTADOS_PARTIDA),
     ],
   },
   registros: {

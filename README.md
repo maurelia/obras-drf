@@ -22,6 +22,22 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.5.0 (16-11-2026)
+
+- **Recálculo de avance de Proyectos (corte)**: cada etapa puede tener `Corte` (% acumulado) y `FechaCorte`; desde esa
+  fecha reemplaza al avance anterior y luego suman los protocolos diarios. Corte del 16-11-2026 (`CORTE` en `catalogo.js`):
+  excavación y taludes listos en rápido (RD-1), disipador (DE) y Piscina B; Piscina A al 80 %; el canal de
+  encauzamiento ya estaba al 100 %. Tempranas 61,1 % → 68,3 %; Piscina Operacional 0 % → 45,0 %; definitivas 29,0 %.
+  Se aplica al buzón con «Aplicar recálculo» en Avance o «Cargar obras y etapas del proyecto» en Ajustes.
+- Nuevo **RTE – Reporte de terreno** (Administrador, Supervisor de terraza, Topógrafo; ambos proyectos): fecha y hora
+  automáticas, turno, clima, personal y equipos, avance ACUMULADO por etapa con «antes → ahora», interferencias,
+  fotos y firma. Cuenta en el avance solo cuando Proyectos lo visa (corte a su fecha y hora). Panel con tabla
+  «Avance diario · validado por Proyectos».
+- Nuevo **PAT – Protocolo de acuerdos en terreno** (Administrador, Supervisor de terraza): participantes, cambios al
+  proyecto, desviaciones, plan de acción con responsable y fecha, acuerdos y fotos; cuatro firmas obligatorias:
+  Jefe de Operaciones o Jefe de División DRF, Supervisor, Proyectos y Director de Proyectos.
+- Requiere `buzon/Code.gs` 1.5.0 desplegado (acepta RTE y PAT).
+
 ## Versión 1.4.0 (10-11-2026)
 
 - **Dos proyectos** con selector en Avance, Obras y Registros (se recuerda en el equipo, clave `proyecto`):
