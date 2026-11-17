@@ -11,6 +11,7 @@ import * as monitor from './monitor.js';
 import { ESTADOS_OBRA, ESTADOS_PARTIDA, uid, nextCode } from './schema.js';
 import { OBRAS_PROYECTO, ETAPAS_PROYECTO, FECHA_BASE, FECHA_CORTE, FASES_OBRA } from './catalogo.js';
 import { FORMS, PUNTOS, evalCota, evalFilaCota, puede, delProyecto, fijarAvanceActual } from './forms.js';
+import { planoSVG, imagenObra, activarPlano, leyendaPlano, hayPlano, piscinaSVG, etapasPiscina } from './planovista.js';
 import { initialData, renderForm, renderDoc, hydrate, fileRefs } from './engine.js';
 import { filasAvance, avanceEtapas, avanceObra, avanceGlobal, serieGlobal, horasRCM, lunes,
   FASES, FASE_PLURAL, faseDe, pesoObra, fasesDeObra } from './avance.js';
@@ -494,6 +495,17 @@ async function cargarCatalogo() {
 const FASES_OF = ['Temprana', 'Definitiva'];
 let faseVista = (() => { try { const f = localStorage.getItem('faseVista'); return FASES_OF.includes(f) ? f : 'Temprana'; } catch { return 'Temprana'; } })();
 
+// Plano del proyecto: vista en planta ('p') o 3D ('v'); se recuerda en este equipo.
+let planoVista = (() => { try { return localStorage.getItem('planoVista') === 'v' ? 'v' : 'p'; } catch { return 'p'; } })();
+// Avance de cada obra para el plano (null = la obra no tiene peso en la fase en vista).
+const estadoPlano = (obras, partidas, porEtapa, fase) => Object.fromEntries(obras.filter((o) => hayPlano(o.Codigo)).map((o) => [o.Codigo, {
+  uid: o.Uid, titulo: o.Title, avance: pesoObra(o, fase) > 0 ? avanceObra(o.Uid, partidas, porEtapa, fase) ?? 0 : null }]));
+
+// Avance de cada etapa de una obra por su ítem (P1..P8 en las piscinas).
+const avanceItems = (obraUid, partidas, porEtapa) => Object.fromEntries(partidas.filter((p) => p.ObraUid === obraUid && p.Item)
+  .map((p) => [String(p.Item), porEtapa[p.Uid] ?? 0]));
+const esPiscina = (o) => o?.Fase === 'Piscina';
+
 // Dashboard: avance por fase, curva acumulada, avance por obra y actividad de la semana.
 async function viewInicio(v) {
   setNav('Avance');
@@ -540,6 +552,8 @@ async function viewInicio(v) {
   const regsDia = (f) => enviados.filter((r) => r.Fecha === f && ['RTE', 'PDA'].includes(r.Tipo) && (r.Datos?.avances || []).some((a) => deFase.has(a.etapa)));
   const diario = serie.slice(1).map((p, i) => ({ ...p, d: p.v - serie[i].v, regs: regsDia(p.fecha) })).reverse().slice(0, 10);
   const rtePorVisar = esAdmin() ? registros.filter((r) => r.Estado === 'Enviado' && r.Tipo === 'RTE').length : 0;
+  const estPlano = esPO ? {} : estadoPlano(obras, partidas, porEtapa, fase);
+  const conPlano = Object.keys(estPlano).length > 0;
   const sinDef = fase !== 'Temprana' && glob == null;
   v.innerHTML = `<div class="head"><h1>Avance</h1></div>${demoNotice()}${avisoPendientes(nPend)}${segProyecto()}
     <p class="foot">${esc(PROYECTOS[proyVista].nombre)} · ${esc(PROYECTOS[proyVista].codigo)} · CECO ${esc(PROYECTOS[proyVista].ceco)}</p>
@@ -551,6 +565,17 @@ async function viewInicio(v) {
         : `${delta ? `${delta > 0 ? '+' : ''}${delta.toLocaleString('es-CL', { maximumFractionDigits: 1 })} pts en los últimos 7 días` : 'Sin variación en los últimos 7 días'}
         · ponderado por peso de obra y etapa dentro de la fase`}
 ${txtOtras}</div></div>
+
+    ${esPO && conPeso.some(esPiscina) ? `<h3>Estado de las piscinas</h3>
+    <div class="piscgrid">${conPeso.filter(esPiscina).map((o) => { const av = avanceItems(o.Uid, partidas, porEtapa);
+      return `<button class="group piscard" data-go="#/obra/${esc(o.Uid)}"><div class="t">${esc(o.Title)} <span class="pct">${fmtPct(avanceObra(o.Uid, partidas, porEtapa, fase) ?? 0, 0)}</span></div>
+        ${piscinaSVG(o.Codigo, av)}${etapasPiscina(av)}</button>`; }).join('')}</div>
+    <p class="foot">Esquema 3D de la piscina tipo (coronamiento 50 × 30 m, fondo 36 × 16 m, h 3,5 m, talud 2:1), dibujado con el avance de sus etapas: profundidad excavada, taludes perfilados (azul), zanja de anclaje y geomembrana (gris oscuro). Punteado: fondo de diseño. No es un plano de ubicación.</p>` : ''}
+    ${conPlano ? `<h3>Plano del proyecto · ${nomFase}</h3>
+    <div class="seg" role="tablist" aria-label="Vista del plano">${[['p', 'Planta'], ['v', 'Vista 3D']].map(([k, l]) => `<button role="tab" aria-selected="${k === planoVista}" data-pvista="${k}">${l}</button>`).join('')}</div>
+    <div class="group planobox" id="plano">${planoSVG(planoVista, estPlano)}</div>
+    ${leyendaPlano()}
+    <p class="foot">Toca una obra para ver su ficha. Color según el avance en ${nomFase}. Planos 2514-HD-PLA-002 (PAS 155/157) y 2025-CI-PLA-068 / 3503-CI-PLA-001; relieve de las curvas de nivel del PAS${planoVista === 'v' ? ', exageración vertical 1,5×, vista desde el suroeste' : ''}.</p>` : ''}
 
     <div class="tiles">
       ${tile('Reportes de terreno', deSemana.filter((r) => r.Tipo === 'RTE').length, `visados esta semana · ${deSemana.filter((r) => r.Tipo === 'PDA').length} protocolos diarios`)}
@@ -579,7 +604,8 @@ ${txtOtras}</div></div>
     <h3>Avance por ${esPO ? 'piscina' : 'obra · ' + nomFase}</h3>
     <div class="group">${conPeso.map((o) => {
       const a = avanceObra(o.Uid, partidas, porEtapa, fase) ?? 0;
-      return `<button class="row" data-go="#/obra/${esc(o.Uid)}"><div class="main"><div class="t">${esc(o.Title)}</div>
+      return `<button class="row" data-go="#/obra/${esc(o.Uid)}">${hayPlano(o.Codigo) ? imagenObra(o.Codigo, estPlano, { clase: 'thumbobra' })
+        : esPiscina(o) ? `<span class="thumbobra">${piscinaSVG(o.Codigo, avanceItems(o.Uid, partidas, porEtapa), { mini: true })}</span>` : ''}<div class="main"><div class="t">${esc(o.Title)}</div>
         <div class="s">${esc(o.Codigo)} · peso ${fmtN(pesoObra(o, fase))} %</div><div class="bar"><i style="width:${a}%"></i></div></div>
         <span class="pct">${fmtPct(a, 0)}</span><span class="chev">${ic('chev', 18)}</span></button>`;
     }).join('') || `<div class="row">Ninguna obra tiene peso en ${nomFase}.</div>`}</div>
@@ -589,6 +615,10 @@ ${txtOtras}</div></div>
   if (!sinDef) wireChart(v, serie);
   wirePendientes(v);
   $('#aplicarCorte') && ($('#aplicarCorte').onclick = cargarCatalogo);
+  if (conPlano) activarPlano($('#plano', v), estPlano, (uid) => (location.hash = '#/obra/' + uid));
+  v.querySelectorAll('[data-pvista]').forEach((b) => (b.onclick = () => {
+    planoVista = b.dataset.pvista; try { localStorage.setItem('planoVista', planoVista); } catch {} route();
+  }));
   v.querySelectorAll('[data-fase]').forEach((b) => (b.onclick = () => {
     faseVista = b.dataset.fase; try { localStorage.setItem('faseVista', faseVista); } catch {} route();
   }));
@@ -714,6 +744,10 @@ async function viewObra(v, obraUid) {
         return `<div class="row"><span class="k">Avance${f && fs.length > 1 ? ` ${FASE_PLURAL[f].toLowerCase()}` : ''}</span><span class="v">${fmtPct(av)}<div class="bar"><i style="width:${av ?? 0}%"></i></div></span></div>`; }).join('')}
       ${mapa}
     </div>
+    ${esPiscina(o) ? `<h3>Estado de la piscina</h3><div class="group piscard ficha">${piscinaSVG(o.Codigo, avanceItems(obraUid, todas, porEtapa))}${etapasPiscina(avanceItems(obraUid, todas, porEtapa))}</div>
+      <p class="foot">Esquema 3D de la piscina tipo según el avance de sus etapas (punteado: fondo de diseño). No es un plano de ubicación.</p>` : ''}
+    ${hayPlano(o.Codigo) ? `<h3>Ubicación</h3><div class="group planobox fichaplano">${imagenObra(o.Codigo,
+      estadoPlano(obras, todas, porEtapa, fs.includes('Temprana') ? 'Temprana' : fs[0] || 'Temprana'), { lado: 240, etiqueta: true, aspecto: 2 })}</div>` : ''}
     ${o.Descripcion || o.Materialidad || o.Geometria ? `<h3>Ficha técnica</h3><div class="group kv">
       ${[['Descripción', o.Descripcion], ['Materialidad', o.Materialidad], ['Geometría', o.Geometria]].filter(([, x]) => x)
         .map(([k, x]) => `<div class="row"><span class="k">${k}</span><span class="v pre">${esc(x)}</span></div>`).join('')}</div>` : ''}

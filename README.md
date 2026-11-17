@@ -22,6 +22,21 @@ Desde v0.5 (etapa 1):
 
 Publicada en **https://maurelia.github.io/obras-drf/** (GitHub Pages, rama `main`).
 
+## Versión 1.6.0 (16-11-2026)
+
+- **Plano del proyecto en el panel de Obras Fluviales**: planta (norte arriba, relieve sombreado y curvas cada 10 m)
+  o **vista 3D** oblicua desde el suroeste (exageración vertical 1,5×); se recuerda la elección (`planoVista`).
+  Cada obra aparece con su huella real, coloreada por su avance en la fase en vista (azul de un tono: más oscuro =
+  más avance; borde punteado = sin iniciar; gris = sin peso en esa fase), con código y % rotulados. Al tocar una
+  obra se abre su ficha; al pasar el puntero, su nombre y avance.
+- **Imagen de cada obra**: miniatura de su ubicación en «Avance por obra» y recorte grande en la ficha (sección Ubicación).
+- Geometría: obras definitivas de 2514-HD-PLA-002 (PAS 155/157, bloques de Civil 3D; el eje central se reparte en
+  CR-1, VE, CD-1 y CC-1), tempranas de 2025-CI-PLA-068 y 3503-CI-PLA-001; relieve de las curvas de nivel del mismo
+  plano. Generador en `01_DOCUMENTOS/_plano` (01_relieve.py → 02_obras.py → 03_render.py) → `img/plano/` y `js/plano.js`.
+- **Piscinas**: esquema 3D de la piscina tipo (50 × 30 m, fondo 36 × 16 m, h 3,5 m, talud 2:1) dibujado con el avance
+  de sus etapas (profundidad excavada, taludes, zanja de anclaje, geomembrana) en el panel de Piscina Operacional,
+  en «Avance por piscina» y en su ficha. Sin plano de ubicación todavía: faltan las coordenadas de las piscinas A y B.
+
 ## Versión 1.5.0 (16-11-2026)
 
 - **Recálculo de avance de Proyectos (corte)**: cada etapa puede tener `Corte` (% acumulado) y `FechaCorte`; desde esa

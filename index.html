@@ -168,6 +168,41 @@ button.tile { cursor: pointer; } button.tile:active { background: var(--sep); }
 .tip { position: absolute; top: 8px; transform: translateX(-50%); background: var(--card); color: var(--label); box-shadow: var(--shadow);
   border-radius: 10px; padding: 6px 10px; font-size: .8125rem; pointer-events: none; text-align: center; white-space: nowrap; }
 details.tabla { margin-top: 8px; } details.tabla summary { cursor: pointer; color: var(--tint); }
+/* Plano del proyecto (planta / vista 3D) e imagen de cada obra */
+.planobox { position: relative; padding: 0; overflow: hidden; }
+.plano { width: 100%; height: auto; display: block; background: #ece4d4; }
+.plano .po { cursor: pointer; outline: none; }
+.plano .po .halo { fill: none; stroke: #fff; stroke-width: 8; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.plano .po .cuerpo { stroke-width: 4.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.plano .po .cuerpo[fill="#ffffff"] { stroke: #2a78d6; stroke-width: 2.5; }
+.plano .po.fuera .cuerpo { stroke-width: 3; }
+.plano .po:hover .halo, .plano .po:focus-visible .halo, .plano .po.foco .halo { stroke: #0b0f14; stroke-width: 9; }
+.plano .etq line { stroke: #0b0f14; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plano .etq text { font: 600 32px -apple-system, system-ui, sans-serif; fill: #0b0f14; paint-order: stroke; stroke: #fff; stroke-width: 7px; stroke-linejoin: round; }
+.plano .etq .v { font-weight: 400; fill: #3d4553; }
+.plano .norte path { fill: #0b0f14; } .plano .norte text, .plano .escala text { font: 600 28px system-ui, sans-serif; fill: #0b0f14; paint-order: stroke; stroke: #fff; stroke-width: 4px; }
+.plano .escala path { stroke: #0b0f14; stroke-width: 4; }
+.plano.mini { border-radius: 10px; }
+.plano.v3d .etq text { font-size: 44px; stroke-width: 9px; }
+.plano.mini .etq text { font-size: 15px; stroke-width: 4px; }
+.planobox .tip { white-space: normal; max-width: 220px; }
+.leyplano { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: .75rem; color: var(--label2); margin: 8px 2px 0; }
+.leyplano .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.leyplano .rampa { width: 70px; height: 10px; border-radius: 5px; display: inline-block; margin-left: 6px; }
+.row .mini.thumbobra { width: 56px; height: 56px; flex: none; margin-right: 12px; }
+.fichaplano { margin-top: 12px; } .fichaplano .plano.mini { width: 100%; }
+/* Piscinas: esquema 3D según avance */
+.piscgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.piscard { display: block; width: 100%; border: 0; text-align: left; padding: 12px 14px; font: inherit; color: inherit; cursor: pointer; }
+.piscard.ficha { cursor: default; }
+.piscard .t { font-weight: 600; display: flex; justify-content: space-between; }
+.pisc { width: 100%; height: auto; display: block; margin: 6px 0; }
+.pisc .pt { font: 600 20px system-ui, sans-serif; fill: var(--label2); }
+.thumbobra .pisc.mini { width: 56px; height: 56px; margin: 0; }
+span.thumbobra { width: 56px; height: 56px; flex: none; margin-right: 12px; background: #ece4d4; border-radius: 10px; display: block; }
+.pisetapas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: .8125rem; color: var(--label2); }
+.pisetapas > div { display: grid; grid-template-columns: 1fr auto; } .pisetapas b { color: var(--label); font-variant-numeric: tabular-nums; }
+.pisetapas .bar { grid-column: 1 / -1; margin-top: 3px; }
 
 /* Formularios de registro */
 section h3 { margin-top: 30px; }
